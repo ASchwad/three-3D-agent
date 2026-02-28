@@ -7,7 +7,8 @@ import ParameterPanel from './components/ParameterPanel'
 import SelectionPanel from './components/SelectionPanel'
 import { downloadSTL, downloadGLB } from './lib/export'
 import { cn } from './lib/utils'
-import type { ProjectHandle, PartOverrides, BevelCapabilities } from './types'
+import { Orbit } from 'lucide-react'
+import type { ProjectHandle, PartOverrides } from './types'
 
 function CameraAPI({
   handleRef,
@@ -110,28 +111,72 @@ function CameraAPI({
   return null
 }
 
+export type LightingMode = 'default' | 'edge' | 'studio' | 'dramatic'
+
+function Lighting({ mode }: { mode: LightingMode }) {
+  switch (mode) {
+    case 'edge':
+      return (
+        <>
+          <ambientLight intensity={0.2} />
+          <directionalLight position={[1, 2, 0.5]} intensity={2.5} castShadow />
+        </>
+      )
+    case 'studio':
+      return (
+        <>
+          <ambientLight intensity={0.4} />
+          {/* Key light */}
+          <directionalLight position={[5, 8, 3]} intensity={1.5} castShadow />
+          {/* Fill light */}
+          <directionalLight position={[-4, 4, -2]} intensity={0.6} />
+          {/* Rim light */}
+          <directionalLight position={[0, 3, -8]} intensity={0.8} />
+        </>
+      )
+    case 'dramatic':
+      return (
+        <>
+          <ambientLight intensity={0.1} />
+          <spotLight position={[0, 15, 0]} intensity={3} angle={0.5} penumbra={0.5} castShadow />
+          <directionalLight position={[-6, 2, -3]} intensity={0.6} color="#6688ff" />
+        </>
+      )
+    default:
+      return (
+        <>
+          <ambientLight intensity={0.8} />
+          <directionalLight position={[5, 12, 5]} intensity={1.2} castShadow />
+          <directionalLight position={[-3, 8, -5]} intensity={0.5} />
+          <directionalLight position={[0, 5, 8]} intensity={0.3} />
+        </>
+      )
+  }
+}
+
 function Scene({
   activeProjectId,
   params,
   onParamsChange,
   onSelectionChange,
   handleRef,
+  lightingMode,
+  autoRotate,
 }: {
   activeProjectId: string
   params: ProjectParams
   onParamsChange: (p: ProjectParams) => void
   onSelectionChange: (ids: Set<string>) => void
   handleRef: React.MutableRefObject<ProjectHandle | null>
+  lightingMode: LightingMode
+  autoRotate: boolean
 }) {
   const activeProject = projects.find((p) => p.id === activeProjectId)
   const controlsRef = useRef<any>(null)
 
   return (
     <>
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[5, 12, 5]} intensity={1.2} castShadow />
-      <directionalLight position={[-3, 8, -5]} intensity={0.5} />
-      <directionalLight position={[0, 5, 8]} intensity={0.3} />
+      <Lighting mode={lightingMode} />
       <Grid
         args={[20, 20]}
         cellSize={1}
@@ -154,7 +199,7 @@ function Scene({
         )}
       </Suspense>
       <CameraAPI handleRef={handleRef} controlsRef={controlsRef} />
-      <OrbitControls ref={controlsRef} makeDefault />
+      <OrbitControls ref={controlsRef} makeDefault autoRotate={autoRotate} autoRotateSpeed={1.5} />
     </>
   )
 }
@@ -169,8 +214,10 @@ function App() {
     return map
   })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [lightingMode, setLightingMode] = useState<LightingMode>('default')
+  const [autoRotate, setAutoRotate] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState(false)
   const [partOverrides, setPartOverrides] = useState<Record<string, PartOverrides>>({})
-  const [bevelCapabilities, setBevelCapabilities] = useState<BevelCapabilities>({})
   const handleRef = useRef<ProjectHandle | null>(null)
 
   const activeParams = paramsMap[activeProjectId] ?? {}
@@ -189,7 +236,6 @@ function App() {
     if (allOverrides) {
       setPartOverrides(allOverrides)
     }
-    setBevelCapabilities(handleRef.current?.getBevelCapabilities() ?? {})
   }, [])
 
   const onPartOverridesChange = useCallback((ids: Set<string>, partial: Partial<PartOverrides>) => {
@@ -215,7 +261,7 @@ function App() {
   }, [activeProject])
 
   return (
-    <div className="w-screen h-screen bg-[#a0a0a0] relative">
+    <div className="w-screen h-screen bg-[#2a2a2a] relative">
       <Canvas shadows camera={{ position: [6, 5, 8], fov: 45 }}>
         <Scene
           activeProjectId={activeProjectId}
@@ -223,41 +269,55 @@ function App() {
           onParamsChange={onParamsChange}
           onSelectionChange={onSelectionChange}
           handleRef={handleRef}
+          lightingMode={lightingMode}
+          autoRotate={autoRotate}
         />
       </Canvas>
 
-      {/* Project Switcher - Left Sidebar */}
-      <div className="absolute top-4 left-4 w-56 bg-background/90 backdrop-blur border rounded-lg p-3 z-10">
-        <h3 className="font-semibold text-sm mb-2">Projects</h3>
-        <div className="space-y-1">
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => {
-                setActiveProjectId(p.id)
-                setSelectedIds(new Set())
-                setPartOverrides({})
-                setBevelCapabilities({})
-              }}
-              className={cn(
-                'w-full text-left px-3 py-2 rounded text-sm transition-colors',
-                activeProjectId === p.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              )}
-            >
-              <div className="font-medium">{p.name}</div>
-              <div
-                className={cn(
-                  'text-xs',
-                  activeProjectId === p.id ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                )}
-              >
-                {p.description}
-              </div>
-            </button>
-          ))}
+      {/* Project Switcher - Top Left, visible on hover */}
+      <div
+        className="absolute top-4 left-4 z-20"
+        onMouseLeave={() => setProjectsOpen(false)}
+      >
+        <div
+          className="bg-background/90 backdrop-blur border rounded-xl px-4 py-2 cursor-default"
+          onMouseEnter={() => setProjectsOpen(true)}
+        >
+          <span className="text-xs text-muted-foreground uppercase tracking-widest"><span className="font-medium">Projects</span> <span className="text-muted-foreground/50">/</span> <span className="font-semibold text-foreground">{activeProject?.name ?? 'Project'}</span></span>
         </div>
+        {projectsOpen && (
+          <div className="mt-1 w-56 bg-background/90 backdrop-blur border rounded-xl p-3 animate-in fade-in duration-150">
+            <div className="space-y-1">
+              {projects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setActiveProjectId(p.id)
+                    setSelectedIds(new Set())
+                    setPartOverrides({})
+                    setProjectsOpen(false)
+                  }}
+                  className={cn(
+                    'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+                    activeProjectId === p.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted'
+                  )}
+                >
+                  <div className="font-medium">{p.name}</div>
+                  <div
+                    className={cn(
+                      'text-xs',
+                      activeProjectId === p.id ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                    )}
+                  >
+                    {p.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Parameter Panel - Top Right */}
@@ -271,13 +331,46 @@ function App() {
         />
       )}
 
+      {/* Lighting Presets & Rotate - Bottom Left */}
+      <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur border rounded-lg p-2 z-10 flex flex-col gap-1.5">
+        <span className="text-xs font-semibold text-muted-foreground px-1">Scene</span>
+        <div className="flex gap-1 items-center">
+        {(['default', 'edge', 'studio', 'dramatic'] as const).map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setLightingMode(mode)}
+            className={cn(
+              'px-3 py-1.5 rounded text-xs font-medium capitalize transition-colors',
+              lightingMode === mode
+                ? 'bg-primary text-primary-foreground'
+                : 'hover:bg-muted'
+            )}
+          >
+            {mode}
+          </button>
+        ))}
+        <div className="w-px h-5 bg-border mx-1" />
+        <button
+          onClick={() => setAutoRotate((r) => !r)}
+          className={cn(
+            'px-3 py-1.5 rounded text-xs font-medium transition-colors',
+            autoRotate
+              ? 'bg-primary text-primary-foreground'
+              : 'hover:bg-muted'
+          )}
+        >
+          <Orbit className="size-3.5" />
+        </button>
+        </div>
+      </div>
+
       {/* Selection Panel - Bottom Right (only when parts selected) */}
       {activeProject && selectedIds.size > 0 && (
         <SelectionPanel
           partLabel={activeProject.partLabel}
           selectedIds={selectedIds}
           partOverrides={partOverrides}
-          bevelCapabilities={bevelCapabilities}
+
           onPartOverridesChange={onPartOverridesChange}
           onDelete={onDelete}
         />
