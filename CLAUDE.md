@@ -7,8 +7,10 @@
 - TanStack React Query
 
 ## Project Structure
-- `three-3d-builder/` - The React frontend application
+- Root directory contains the React frontend application
 - `threejs-skills/` - Three.js skill documentation for Claude Code
+- `screenshots/` - WIP screenshots (gitignored)
+- `examples/` - Reference images organized by project
 
 ## 3D Component Generation Rules
 
