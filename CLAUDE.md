@@ -6,6 +6,9 @@
 - shadcn/ui components + Tailwind CSS v4
 - TanStack React Query
 
+## Screenshots
+- All Playwright/MCP screenshots MUST be saved to `screenshots/` (e.g. `filename: "screenshots/my-screenshot.png"`). Never save screenshots to the repo root.
+
 ## Project Structure
 - Root directory contains the React frontend application
 - `threejs-skills/` - Three.js skill documentation for Claude Code

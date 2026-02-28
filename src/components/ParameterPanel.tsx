@@ -22,23 +22,24 @@ export default function ParameterPanel({ params, onChange, paramDefs, onExportST
   }, {})
 
   return (
-    <div className="absolute top-4 right-4 w-72 bg-background/90 backdrop-blur border rounded-lg p-4 space-y-4 z-10 max-h-[80vh] overflow-y-auto">
-      <h3 className="font-semibold text-sm">Parameters</h3>
+    <div className="absolute top-16 left-4 w-80 bg-background/90 backdrop-blur border rounded-xl p-5 space-y-5 z-10 max-h-[75vh] overflow-y-auto">
+      <h3 className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">Parameters</h3>
 
-      {Object.entries(groups).map(([group, defs]) => (
-        <div key={group} className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{group}</p>
+      {Object.entries(groups).map(([group, defs], i) => (
+        <div key={group} className="space-y-4">
+          {i > 0 && <div className="h-px bg-border/30" />}
+          <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">{group}</p>
           {defs.map((def) => (
-            <div key={def.key} className="space-y-1">
+            <div key={def.key} className="space-y-2">
               {def.options ? (
                 <>
-                  <Label className="text-xs"><span>{def.label}</span></Label>
-                  <div className="flex flex-wrap gap-1">
+                  <Label className="text-xs text-foreground/80">{def.label}</Label>
+                  <div className="flex flex-wrap gap-1.5">
                     {def.options.map((opt) => (
                       <button
                         key={opt.value}
                         onClick={() => onChange({ ...params, [def.key]: opt.value })}
-                        className={`px-2 py-1 text-xs rounded border transition-colors ${
+                        className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
                           params[def.key] === opt.value
                             ? 'bg-primary text-primary-foreground border-primary'
                             : 'bg-background hover:bg-muted border-border'
@@ -51,9 +52,9 @@ export default function ParameterPanel({ params, onChange, paramDefs, onExportST
                 </>
               ) : (
                 <>
-                  <Label className="text-xs flex justify-between">
+                  <Label className="text-xs flex justify-between text-foreground/80">
                     <span>{def.label}</span>
-                    <span className="text-muted-foreground font-mono">
+                    <span className="text-muted-foreground font-mono text-[11px]">
                       {def.step >= 1 ? Math.round(params[def.key]) : params[def.key].toFixed(2)}
                     </span>
                   </Label>
@@ -72,14 +73,14 @@ export default function ParameterPanel({ params, onChange, paramDefs, onExportST
       ))}
 
       {/* Export section */}
-      <div className="border-t pt-3 space-y-2">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Export</p>
+      <div className="border-t border-border/50 pt-4 space-y-3">
+        <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">Export</p>
         <div className="flex gap-2">
           <button
             onClick={onExportSTL}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm rounded border bg-background hover:bg-muted transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-border/50 bg-background hover:bg-muted transition-all"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="size-3.5" />
             .stl
           </button>
           <button
@@ -88,9 +89,9 @@ export default function ParameterPanel({ params, onChange, paramDefs, onExportST
               setExporting(true)
               try { await onExportGLB() } finally { setExporting(false) }
             }}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm rounded border bg-background hover:bg-muted disabled:opacity-40 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-border/50 bg-background hover:bg-muted disabled:opacity-40 transition-all"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="size-3.5" />
             {exporting ? '...' : '.glb'}
           </button>
         </div>
