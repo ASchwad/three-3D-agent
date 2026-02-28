@@ -1,6 +1,7 @@
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
-import type { PartOverrides } from '../types'
+import type { PartOverrides, ProjectHandle, PartBaseDimensions } from '../types'
+import type { UnitSystem } from '../lib/units'
 
 interface SelectionPanelProps {
   partLabel: string
@@ -8,6 +9,8 @@ interface SelectionPanelProps {
   partOverrides: Record<string, PartOverrides>
   onPartOverridesChange: (ids: Set<string>, partial: Partial<PartOverrides>) => void
   onDelete: () => void
+  handleRef: React.MutableRefObject<ProjectHandle | null>
+  unit: UnitSystem
 }
 
 const DEFAULT_DISPLAY: PartOverrides = { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0, bevelRadius: 0.4, bevelSegments: 3 }
@@ -41,9 +44,27 @@ function getDisplayOverrides(selectedIds: Set<string>, partOverrides: Record<str
   }
 }
 
-export default function SelectionPanel({ partLabel, selectedIds, partOverrides, onPartOverridesChange, onDelete }: SelectionPanelProps) {
+export default function SelectionPanel({
+  partLabel,
+  selectedIds,
+  partOverrides,
+  onPartOverridesChange,
+  onDelete,
+  handleRef,
+  unit,
+}: SelectionPanelProps) {
   const selectionCount = selectedIds.size
   const displayOverrides = getDisplayOverrides(selectedIds, partOverrides)
+  const isSingle = selectionCount === 1
+
+  // For single selection, get base dimensions to show real sizes
+  let baseDims: PartBaseDimensions | null = null
+  if (isSingle) {
+    const id = Array.from(selectedIds)[0]
+    baseDims = handleRef.current?.getPartBaseDimensions(id) ?? null
+  }
+
+  const showDimensions = isSingle && baseDims !== null
 
   return (
     <div className="absolute top-4 right-4 w-80 bg-background/90 backdrop-blur border rounded-xl p-5 space-y-4 z-10 max-h-[75vh] overflow-y-auto">
@@ -51,48 +72,60 @@ export default function SelectionPanel({ partLabel, selectedIds, partOverrides, 
         {selectionCount === 1 ? `1 ${partLabel} Selected` : `${selectionCount} ${partLabel}s Selected`}
       </h3>
 
-      {/* Scale overrides */}
+      {/* Dimensions (single select) or Scale (multi select) */}
       <div className="space-y-3">
-        <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">Scale</p>
-        <div className="space-y-2">
-          <Label className="text-xs flex justify-between text-foreground/80">
-            <span>Scale X</span>
-            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.scaleX.toFixed(2)}</span>
-          </Label>
-          <Slider
-            min={0.1}
-            max={3.0}
-            step={0.05}
-            value={[displayOverrides.scaleX]}
-            onValueChange={([v]) => onPartOverridesChange(selectedIds, { scaleX: v })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs flex justify-between text-foreground/80">
-            <span>Scale Y</span>
-            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.scaleY.toFixed(2)}</span>
-          </Label>
-          <Slider
-            min={0.1}
-            max={3.0}
-            step={0.05}
-            value={[displayOverrides.scaleY]}
-            onValueChange={([v]) => onPartOverridesChange(selectedIds, { scaleY: v })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label className="text-xs flex justify-between text-foreground/80">
-            <span>Scale Z</span>
-            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.scaleZ.toFixed(2)}</span>
-          </Label>
-          <Slider
-            min={0.1}
-            max={3.0}
-            step={0.05}
-            value={[displayOverrides.scaleZ]}
-            onValueChange={([v]) => onPartOverridesChange(selectedIds, { scaleZ: v })}
-          />
-        </div>
+        <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">
+          {showDimensions ? 'Dimensions' : 'Scale'}
+        </p>
+        {showDimensions ? (
+          <>
+            {(['x', 'y', 'z'] as const).map((axis) => {
+              const scaleKey = `scale${axis.toUpperCase()}` as keyof Pick<PartOverrides, 'scaleX' | 'scaleY' | 'scaleZ'>
+              const baseDim = baseDims![axis]
+              const currentDim = baseDim * displayOverrides[scaleKey]
+              const label = axis === 'x' ? 'Width' : axis === 'y' ? 'Height' : 'Depth'
+              return (
+                <div key={axis} className="space-y-2">
+                  <Label className="text-xs flex justify-between text-foreground/80">
+                    <span>{label}</span>
+                    <span className="text-muted-foreground font-mono text-[11px]">
+                      {currentDim.toFixed(1)}
+                      <span className="text-muted-foreground/60 ml-0.5">{unit}</span>
+                    </span>
+                  </Label>
+                  <Slider
+                    min={Math.max(0.1, baseDim * 0.1)}
+                    max={baseDim * 3.0}
+                    step={baseDim * 0.01}
+                    value={[currentDim]}
+                    onValueChange={([v]) => onPartOverridesChange(selectedIds, { [scaleKey]: v / baseDim })}
+                  />
+                </div>
+              )
+            })}
+          </>
+        ) : (
+          <>
+            {(['X', 'Y', 'Z'] as const).map((axis) => {
+              const key = `scale${axis}` as keyof Pick<PartOverrides, 'scaleX' | 'scaleY' | 'scaleZ'>
+              return (
+                <div key={axis} className="space-y-2">
+                  <Label className="text-xs flex justify-between text-foreground/80">
+                    <span>Scale {axis}</span>
+                    <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides[key].toFixed(2)}</span>
+                  </Label>
+                  <Slider
+                    min={0.1}
+                    max={3.0}
+                    step={0.05}
+                    value={[displayOverrides[key]]}
+                    onValueChange={([v]) => onPartOverridesChange(selectedIds, { [key]: v })}
+                  />
+                </div>
+              )
+            })}
+          </>
+        )}
       </div>
 
       <div className="h-px bg-border/30" />

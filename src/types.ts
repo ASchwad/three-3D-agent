@@ -8,6 +8,12 @@ export interface PartOverrides {
   bevelSegments: number
 }
 
+export interface PartBaseDimensions {
+  x: number
+  y: number
+  z: number
+}
+
 export interface ProjectHandle {
   selectedIds: Set<string>
   deleteSelected: () => void
@@ -15,6 +21,7 @@ export interface ProjectHandle {
   getPartOverrides: (id: string) => PartOverrides | undefined
   updatePartOverrides: (ids: Set<string>, partial: Partial<PartOverrides>) => void
   getAllPartOverrides: () => Record<string, PartOverrides>
+  getPartBaseDimensions: (id: string) => PartBaseDimensions | null
 }
 
 export type UnitType = 'length' | 'angle' | 'count' | 'ratio'

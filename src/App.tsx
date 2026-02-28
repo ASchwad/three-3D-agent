@@ -390,9 +390,10 @@ function App() {
           partLabel={activeProject.partLabel}
           selectedIds={selectedIds}
           partOverrides={partOverrides}
-
           onPartOverridesChange={onPartOverridesChange}
           onDelete={onDelete}
+          handleRef={handleRef}
+          unit={unit}
         />
       )}
     </div>

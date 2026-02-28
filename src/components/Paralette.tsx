@@ -4,7 +4,7 @@ import { Evaluator, Brush, ADDITION, SUBTRACTION } from 'three-bvh-csg'
 import { RoundedBoxGeometry } from 'three-stdlib'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
-import type { PartOverrides, ProjectHandle } from '../types'
+import type { PartOverrides, ProjectHandle, PartBaseDimensions } from '../types'
 
 interface PartData {
   id: string
@@ -58,6 +58,21 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
   }, [selectedIds])
 
   const getGroup = useCallback(() => modelRef.current, [])
+  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
+    const part = parts.find(p => p.id === id)
+    if (!part) return null
+    const geoMap: Record<string, THREE.BufferGeometry | null> = {
+      frame: frameGeo,
+      grip: gripTubeGeo,
+      'foot-left': footGeo,
+      'foot-right': footGeo,
+    }
+    const geo = geoMap[part.type]
+    if (!geo) return null
+    geo.computeBoundingBox()
+    const box = geo.boundingBox!
+    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
+  }, [parts, frameGeo, gripTubeGeo, footGeo])
   const getPartOverrides = useCallback(
     (id: string) => parts.find(p => p.id === id)?.overrides, [parts]
   )
@@ -72,9 +87,9 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
 
   useEffect(() => {
     if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides }
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
     }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides])
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
 
   useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds, onSelectionChange])
 

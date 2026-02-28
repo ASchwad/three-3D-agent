@@ -63,7 +63,7 @@ export const projects: Project[] = [
       { key: 'waveA', label: 'Wave Amplitude A', min: 0, max: 10, step: 0.1, group: 'Wave Profile', unitType: 'length' },
       { key: 'waveB', label: 'Wave Amplitude B', min: 0, max: 10, step: 0.1, group: 'Wave Profile', unitType: 'length' },
     ],
-    partLabel: 'Fin',
+    partLabel: 'Part',
     referenceImages: [
       { src: wavyFront, label: 'Front' },
       { src: wavySide, label: 'Side' },

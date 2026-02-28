@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Evaluator, Brush, INTERSECTION } from 'three-bvh-csg'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
-import type { PartOverrides, ProjectHandle } from '../types'
+import type { PartOverrides, ProjectHandle, PartBaseDimensions } from '../types'
 
 const PATTERN = { NONE: 0, HONEYCOMB: 1, TRIANGLE: 2 } as const
 
@@ -277,6 +277,15 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
   }, [selectedIds])
 
   const getGroup = useCallback(() => modelRef.current, [])
+  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
+    const part = parts.find(p => p.id === id)
+    if (!part) return null
+    const geo = part.type === 'frame' ? frameGeo : infillGeo
+    if (!geo) return null
+    geo.computeBoundingBox()
+    const box = geo.boundingBox!
+    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
+  }, [parts, frameGeo, infillGeo])
   const getPartOverrides = useCallback(
     (id: string) => parts.find(p => p.id === id)?.overrides, [parts]
   )
@@ -291,9 +300,9 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
 
   useEffect(() => {
     if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides }
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
     }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides])
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
 
   useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds, onSelectionChange])
 

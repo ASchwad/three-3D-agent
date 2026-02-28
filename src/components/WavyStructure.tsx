@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
-import type { PartOverrides, ProjectHandle } from '../types'
+import type { PartOverrides, ProjectHandle, PartBaseDimensions } from '../types'
 
 interface PartData {
   id: string
@@ -159,13 +159,6 @@ export default function WavyStructure({ params, onSelectionChange, handleRef }: 
     return result
   }, [parts])
 
-  // Expose handle to parent
-  useEffect(() => {
-    if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides }
-    }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides])
-
   useEffect(() => {
     onSelectionChange?.(selectedIds)
   }, [selectedIds, onSelectionChange])
@@ -264,6 +257,25 @@ export default function WavyStructure({ params, onSelectionChange, handleRef }: 
     geo.computeVertexNormals()
     return geo
   }, [baseDepth, finThickness, waveAvg, waveA, waveB, zBevelRadius, zBevelSegments])
+
+  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
+    const part = parts.find(p => p.id === id)
+    if (!part) return null
+    if (part.type === 'base') {
+      return { x: baseWidth + 0.12, y: baseHeight, z: baseDepth + 0.12 }
+    }
+    const geo = part.type === 'x' ? xFinGeo : zFinGeo
+    geo.computeBoundingBox()
+    const box = geo.boundingBox!
+    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
+  }, [parts, baseWidth, baseHeight, baseDepth, xFinGeo, zFinGeo])
+
+  // Expose handle to parent (must be after all useCallback/useMemo definitions it references)
+  useEffect(() => {
+    if (handleRef) {
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
+    }
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
 
   const xSpacing = baseDepth / (finCount - 1 || 1)
   const zSpacing = baseWidth / (finCount - 1 || 1)
