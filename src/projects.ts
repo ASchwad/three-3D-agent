@@ -1,8 +1,22 @@
 import { lazy, type ComponentType } from 'react'
 import type { ParamDef, ProjectHandle } from './types'
 
+// Reference image imports
+import paralettesFront from '../examples/paralettes/front-view.png'
+import paralettesSide from '../examples/paralettes/side-view.png'
+import paralettesThreeQuarter from '../examples/paralettes/three-quarter-view.png'
+import wavyFront from '../examples/project_lid_holder/analysis_front.png'
+import wavySide from '../examples/project_lid_holder/analysis_side.png'
+import wavyTop from '../examples/project_lid_holder/analysis_top.png'
+import wavyPerspective from '../examples/project_lid_holder/analysis_perspective.png'
+
 export interface ProjectParams {
   [key: string]: number
+}
+
+export interface ReferenceImage {
+  src: string
+  label: string
 }
 
 export interface Project {
@@ -18,8 +32,10 @@ export interface Project {
   defaultParams: ProjectParams
   paramDefs: ParamDef[]
   partLabel: string
+  referenceImages?: ReferenceImage[]
 }
 
+// All defaultParams are authored in mm. 1 Three.js unit = 1 mm.
 export const projects: Project[] = [
   {
     id: 'wavy-structure',
@@ -27,27 +43,33 @@ export const projects: Project[] = [
     description: 'Parametric wavy fin lattice with dual-cosine wave profile',
     component: lazy(() => import('./components/WavyStructure')),
     defaultParams: {
-      baseWidth: 3.5,
-      baseDepth: 2.8,
-      baseHeight: 0.2,
+      baseWidth: 35,
+      baseDepth: 28,
+      baseHeight: 2,
       finCount: 6,
-      finThickness: 0.09,
-      waveAvg: 1.25,
-      waveA: 0.35,
-      waveB: 0.4,
+      finThickness: 0.9,
+      waveAvg: 12.5,
+      waveA: 3.5,
+      waveB: 4,
       color: 0xe8e8e8,
     },
     paramDefs: [
-      { key: 'baseWidth', label: 'Base Width', min: 1, max: 8, step: 0.1, group: 'Dimensions' },
-      { key: 'baseDepth', label: 'Base Depth', min: 1, max: 8, step: 0.1, group: 'Dimensions' },
-      { key: 'baseHeight', label: 'Base Height', min: 0.05, max: 0.5, step: 0.01, group: 'Dimensions' },
-      { key: 'finCount', label: 'Fin Count', min: 2, max: 12, step: 1, group: 'Counts & Spacing' },
-      { key: 'finThickness', label: 'Fin Thickness', min: 0.02, max: 0.3, step: 0.01, group: 'Counts & Spacing' },
-      { key: 'waveAvg', label: 'Wave Average Height', min: 0.5, max: 3, step: 0.05, group: 'Wave Profile' },
-      { key: 'waveA', label: 'Wave Amplitude A', min: 0, max: 1, step: 0.01, group: 'Wave Profile' },
-      { key: 'waveB', label: 'Wave Amplitude B', min: 0, max: 1, step: 0.01, group: 'Wave Profile' },
+      { key: 'baseWidth', label: 'Base Width', min: 10, max: 80, step: 1, group: 'Dimensions', unitType: 'length' },
+      { key: 'baseDepth', label: 'Base Depth', min: 10, max: 80, step: 1, group: 'Dimensions', unitType: 'length' },
+      { key: 'baseHeight', label: 'Base Height', min: 0.5, max: 5, step: 0.1, group: 'Dimensions', unitType: 'length' },
+      { key: 'finCount', label: 'Fin Count', min: 2, max: 12, step: 1, group: 'Counts & Spacing', unitType: 'count' },
+      { key: 'finThickness', label: 'Fin Thickness', min: 0.2, max: 3, step: 0.1, group: 'Counts & Spacing', unitType: 'length' },
+      { key: 'waveAvg', label: 'Wave Average Height', min: 5, max: 30, step: 0.5, group: 'Wave Profile', unitType: 'length' },
+      { key: 'waveA', label: 'Wave Amplitude A', min: 0, max: 10, step: 0.1, group: 'Wave Profile', unitType: 'length' },
+      { key: 'waveB', label: 'Wave Amplitude B', min: 0, max: 10, step: 0.1, group: 'Wave Profile', unitType: 'length' },
     ],
     partLabel: 'Fin',
+    referenceImages: [
+      { src: wavyFront, label: 'Front' },
+      { src: wavySide, label: 'Side' },
+      { src: wavyTop, label: 'Top' },
+      { src: wavyPerspective, label: 'Perspective' },
+    ],
   },
   {
     id: 'paralette',
@@ -55,26 +77,31 @@ export const projects: Project[] = [
     description: 'A-shaped triangular fitness frame with grip tube',
     component: lazy(() => import('./components/Paralette')),
     defaultParams: {
-      baseWidth: 5.5,
-      triangleHeight: 5.0,
-      barThickness: 0.55,
-      depth: 0.8,
-      gripDiameter: 0.8,
-      gripExtension: 0.35,
-      footRadius: 0.18,
-      footHeight: 0.12,
+      baseWidth: 55,
+      triangleHeight: 50,
+      barThickness: 5.5,
+      depth: 8,
+      gripDiameter: 8,
+      gripExtension: 3.5,
+      footRadius: 1.8,
+      footHeight: 1.2,
     },
     paramDefs: [
-      { key: 'baseWidth', label: 'Base Width', min: 1, max: 10, step: 0.1, group: 'Triangle' },
-      { key: 'triangleHeight', label: 'Triangle Height', min: 2, max: 12, step: 0.1, group: 'Triangle' },
-      { key: 'barThickness', label: 'Bar Thickness', min: 0.2, max: 1.5, step: 0.05, group: 'Triangle' },
-      { key: 'depth', label: 'Depth', min: 0.3, max: 4, step: 0.1, group: 'Triangle' },
-      { key: 'gripDiameter', label: 'Grip Diameter', min: 0.2, max: 2.0, step: 0.05, group: 'Grip' },
-      { key: 'gripExtension', label: 'Grip Extension', min: 0, max: 2, step: 0.05, group: 'Grip' },
-      { key: 'footRadius', label: 'Foot Radius', min: 0.1, max: 1.5, step: 0.05, group: 'Feet' },
-      { key: 'footHeight', label: 'Foot Height', min: 0.1, max: 0.8, step: 0.05, group: 'Feet' },
+      { key: 'baseWidth', label: 'Base Width', min: 10, max: 100, step: 1, group: 'Triangle', unitType: 'length' },
+      { key: 'triangleHeight', label: 'Triangle Height', min: 20, max: 120, step: 1, group: 'Triangle', unitType: 'length' },
+      { key: 'barThickness', label: 'Bar Thickness', min: 2, max: 15, step: 0.5, group: 'Triangle', unitType: 'length' },
+      { key: 'depth', label: 'Depth', min: 3, max: 40, step: 1, group: 'Triangle', unitType: 'length' },
+      { key: 'gripDiameter', label: 'Grip Diameter', min: 2, max: 20, step: 0.5, group: 'Grip', unitType: 'length' },
+      { key: 'gripExtension', label: 'Grip Extension', min: 0, max: 20, step: 0.5, group: 'Grip', unitType: 'length' },
+      { key: 'footRadius', label: 'Foot Radius', min: 1, max: 15, step: 0.5, group: 'Feet', unitType: 'length' },
+      { key: 'footHeight', label: 'Foot Height', min: 1, max: 8, step: 0.5, group: 'Feet', unitType: 'length' },
     ],
     partLabel: 'Part',
+    referenceImages: [
+      { src: paralettesFront, label: 'Front View' },
+      { src: paralettesSide, label: 'Side View' },
+      { src: paralettesThreeQuarter, label: 'Three-Quarter View' },
+    ],
   },
   {
     id: 'triangle-infill',
@@ -82,22 +109,22 @@ export const projects: Project[] = [
     description: 'Triangle with selectable 3D-print infill patterns',
     component: lazy(() => import('./components/TriangleInfill')),
     defaultParams: {
-      baseWidth: 5.0,
-      triangleHeight: 6.0,
-      wallThickness: 0.3,
-      depth: 1.0,
+      baseWidth: 50,
+      triangleHeight: 60,
+      wallThickness: 3,
+      depth: 10,
       fillPattern: 1,
       patternOrigin: 0,
-      cellSize: 0.6,
-      infillWallThickness: 0.08,
+      cellSize: 6,
+      infillWallThickness: 0.8,
     },
     paramDefs: [
-      { key: 'baseWidth', label: 'Base Width', min: 2, max: 10, step: 0.1, group: 'Triangle' },
-      { key: 'triangleHeight', label: 'Height', min: 2, max: 12, step: 0.1, group: 'Triangle' },
-      { key: 'wallThickness', label: 'Wall Thickness', min: 0.1, max: 1, step: 0.05, group: 'Triangle' },
-      { key: 'depth', label: 'Depth', min: 0.2, max: 3, step: 0.1, group: 'Triangle' },
+      { key: 'baseWidth', label: 'Base Width', min: 20, max: 100, step: 1, group: 'Triangle', unitType: 'length' },
+      { key: 'triangleHeight', label: 'Height', min: 20, max: 120, step: 1, group: 'Triangle', unitType: 'length' },
+      { key: 'wallThickness', label: 'Wall Thickness', min: 1, max: 10, step: 0.5, group: 'Triangle', unitType: 'length' },
+      { key: 'depth', label: 'Depth', min: 2, max: 30, step: 1, group: 'Triangle', unitType: 'length' },
       {
-        key: 'fillPattern', label: 'Fill Pattern', min: 0, max: 2, step: 1, group: 'Infill',
+        key: 'fillPattern', label: 'Fill Pattern', min: 0, max: 2, step: 1, group: 'Infill', unitType: 'count',
         options: [
           { value: 0, label: 'None' },
           { value: 1, label: 'Honeycomb' },
@@ -105,14 +132,14 @@ export const projects: Project[] = [
         ],
       },
       {
-        key: 'patternOrigin', label: 'Pattern Origin', min: 0, max: 1, step: 1, group: 'Infill',
+        key: 'patternOrigin', label: 'Pattern Origin', min: 0, max: 1, step: 1, group: 'Infill', unitType: 'count',
         options: [
           { value: 0, label: 'From Bottom' },
           { value: 1, label: 'From Top' },
         ],
       },
-      { key: 'cellSize', label: 'Cell Size', min: 0.3, max: 2.0, step: 0.05, group: 'Infill' },
-      { key: 'infillWallThickness', label: 'Infill Wall Thickness', min: 0.02, max: 0.3, step: 0.01, group: 'Infill' },
+      { key: 'cellSize', label: 'Cell Size', min: 3, max: 20, step: 0.5, group: 'Infill', unitType: 'length' },
+      { key: 'infillWallThickness', label: 'Infill Wall Thickness', min: 0.2, max: 3, step: 0.1, group: 'Infill', unitType: 'length' },
     ],
     partLabel: 'Part',
   },
