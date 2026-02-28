@@ -17,6 +17,8 @@ export interface ProjectHandle {
   getAllPartOverrides: () => Record<string, PartOverrides>
 }
 
+export type UnitType = 'length' | 'angle' | 'count' | 'ratio'
+
 export interface ParamDef {
   key: string
   label: string
@@ -24,5 +26,6 @@ export interface ParamDef {
   max: number
   step: number
   group: string
+  unitType: UnitType
   options?: { value: number; label: string }[]
 }
