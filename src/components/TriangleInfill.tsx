@@ -1,18 +1,24 @@
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useMemo, useEffect, useCallback, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { Evaluator, Brush, INTERSECTION } from 'three-bvh-csg'
-import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
 import type { PartOverrides, ProjectHandle, PartBaseDimensions } from '../types'
+import { usePartInteraction, type PartData } from '../hooks/usePartInteraction'
+
+type InfillPartType = 'frame' | 'infill'
 
 const PATTERN = { NONE: 0, HONEYCOMB: 1, TRIANGLE: 2 } as const
 
 const DEFAULT_OVERRIDES: PartOverrides = { scaleX: 1, scaleY: 1, scaleZ: 1, bevelRadius: 0.4, bevelSegments: 3 }
 
+const INITIAL_PARTS: PartData<InfillPartType>[] = [
+  { id: 'frame', type: 'frame', overrides: { ...DEFAULT_OVERRIDES } },
+  { id: 'infill', type: 'infill', overrides: { ...DEFAULT_OVERRIDES } },
+]
+
 // ── Geometry helpers ──
 
-/** Check if point (px,py) is inside the triangle defined by 3 vertices */
 function pointInTriangle(px: number, py: number, v0: [number, number], v1: [number, number], v2: [number, number]): boolean {
   const d1 = (px - v1[0]) * (v0[1] - v1[1]) - (v0[0] - v1[0]) * (py - v1[1])
   const d2 = (px - v2[0]) * (v1[1] - v2[1]) - (v1[0] - v2[0]) * (py - v2[1])
@@ -47,17 +53,15 @@ function createOuterFrame(hw: number, H: number, T: number): THREE.Shape {
   return shape
 }
 
-/** Solid inner triangle for CSG clipping. Positive offset = shrink inward, negative = expand outward. */
 function createInnerTriangleSolid(hw: number, H: number, T: number, depth: number, offset: number = 0): THREE.BufferGeometry {
   const verts = getInnerTriVerts(hw, H, T)
   let finalVerts = verts
   if (offset !== 0) {
     const cx = (verts[0][0] + verts[1][0] + verts[2][0]) / 3
     const cy = (verts[0][1] + verts[1][1] + verts[2][1]) / 3
-    finalVerts = verts.map(v => {
+    finalVerts = verts.map((v) => {
       const dx = cx - v[0], dy = cy - v[1]
       const dist = Math.sqrt(dx * dx + dy * dy)
-      // positive offset moves toward centroid (shrink), negative moves away (expand)
       return [v[0] + dx * (offset / dist), v[1] + dy * (offset / dist)] as [number, number]
     })
   }
@@ -71,23 +75,21 @@ function createInnerTriangleSolid(hw: number, H: number, T: number, depth: numbe
   return geo
 }
 
-// ── Pattern slab generators (oversized, will be CSG-clipped to triangle) ──
+// ── Pattern slab generators ──
 
 function createHoneycombSlab(hw: number, H: number, T: number, cellSize: number, wallThickness: number, depth: number, fromTop: boolean): THREE.BufferGeometry {
   const innerVerts = getInnerTriVerts(hw, H, T)
-  // Expand triangle slightly for the bounding region (one cell of margin)
   const margin = cellSize * 1.5
   const expandedVerts: [number, number][] = (() => {
     const cx = (innerVerts[0][0] + innerVerts[1][0] + innerVerts[2][0]) / 3
     const cy = (innerVerts[0][1] + innerVerts[1][1] + innerVerts[2][1]) / 3
-    return innerVerts.map(v => {
+    return innerVerts.map((v) => {
       const dx = v[0] - cx, dy = v[1] - cy
       const dist = Math.sqrt(dx * dx + dy * dy)
       return [v[0] + dx * (margin / dist), v[1] + dy * (margin / dist)] as [number, number]
     })
   })()
 
-  // Bounding box of the expanded triangle
   const minX = Math.min(expandedVerts[0][0], expandedVerts[1][0], expandedVerts[2][0])
   const maxX = Math.max(expandedVerts[0][0], expandedVerts[1][0], expandedVerts[2][0])
   const minY = Math.min(expandedVerts[0][1], expandedVerts[1][1], expandedVerts[2][1])
@@ -109,8 +111,6 @@ function createHoneycombSlab(hw: number, H: number, T: number, cellSize: number,
 
   const spacingX = Math.sqrt(3) * cellSize
   const spacingY = 1.5 * cellSize
-
-  // Anchor pattern at apex (fromTop) or base (fromBottom)
   const anchorY = fromTop ? (H - T / 2) : (T / 2)
   const rowsDown = Math.ceil((anchorY - minY) / spacingY) + 2
   const rowsUp = Math.ceil((maxY - anchorY) / spacingY) + 2
@@ -120,11 +120,9 @@ function createHoneycombSlab(hw: number, H: number, T: number, cellSize: number,
     const cy = anchorY + rowIdx * spacingY
     if (cy < minY - cellSize || cy > maxY + cellSize) continue
 
-    const rowParity = ((rowIdx % 2) + 2) % 2 // always 0 or 1
+    const rowParity = ((rowIdx % 2) + 2) % 2
     for (let colIdx = -colsHalf; colIdx <= colsHalf; colIdx++) {
       const cx = colIdx * spacingX + (rowParity === 1 ? spacingX / 2 : 0)
-
-      // Only generate holes near the expanded triangle (skip far-away cells)
       if (!pointInTriangle(cx, cy, expandedVerts[0], expandedVerts[1], expandedVerts[2])) continue
 
       const hole = new THREE.Path()
@@ -151,16 +149,13 @@ function createTriangleSlab(hw: number, H: number, T: number, cellSize: number, 
   const minY = -margin, maxY = H + margin
   const slabW = maxX - minX + margin * 2
   const diag = Math.sqrt(slabW ** 2 + (maxY - minY + margin * 2) ** 2)
-  // Anchor at apex or base
   const anchorY = fromTop ? (H - T / 2) : (T / 2)
   const slabDepth = depth + 0.02
   const geos: THREE.BufferGeometry[] = []
 
-  // Perpendicular spacing for lines at angle θ, anchored at (0, anchorY)
   const addParallelLines = (theta: number) => {
     const nx = -Math.sin(theta)
     const ny = Math.cos(theta)
-    // Project anchor onto the perpendicular axis
     const anchorProj = 0 * nx + anchorY * ny
     for (let d = -diag; d <= diag; d += cellSize) {
       const offset = anchorProj + d
@@ -171,7 +166,6 @@ function createTriangleSlab(hw: number, H: number, T: number, cellSize: number, 
     }
   }
 
-  // Three sets of parallel lines at 0°, 60°, -60° → equilateral triangles
   addParallelLines(0)
   addParallelLines(Math.PI / 3)
   addParallelLines(-Math.PI / 3)
@@ -201,7 +195,6 @@ function generateInfill(
       return null
   }
 
-  // Expand clipping triangle slightly outward so infill overlaps into the frame walls (no visible gap)
   const outset = -(T * 0.3)
   const triangleGeo = createInnerTriangleSolid(hw, H, T, depth, outset)
 
@@ -220,7 +213,6 @@ function generateInfill(
     patternGeo.dispose()
     return resultGeo
   } catch {
-    // Fallback: return the pattern slab without CSG clipping
     triangleGeo.dispose()
     patternGeo.dispose()
     return null
@@ -228,12 +220,6 @@ function generateInfill(
 }
 
 // ── Main component ──
-
-interface PartData {
-  id: string
-  type: 'frame' | 'infill'
-  overrides: PartOverrides
-}
 
 export default function TriangleInfill({ params, onSelectionChange, handleRef }: {
   params: ProjectParams
@@ -257,111 +243,19 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
 
   const hw = W / 2
 
-  const [parts, setParts] = useState<PartData[]>([])
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setParts([
-      { id: 'frame', type: 'frame', overrides: { ...DEFAULT_OVERRIDES } },
-      { id: 'infill', type: 'infill', overrides: { ...DEFAULT_OVERRIDES } },
-    ])
-    setSelectedIds(new Set())
-  }, [])
-
-  const deleteSelected = useCallback(() => {
-    if (selectedIds.size > 0) {
-      setParts(prev => prev.filter(p => !selectedIds.has(p.id)))
-      setSelectedIds(new Set())
-    }
-  }, [selectedIds])
-
-  const getGroup = useCallback(() => modelRef.current, [])
-  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
-    const part = parts.find(p => p.id === id)
-    if (!part) return null
-    const geo = part.type === 'frame' ? frameGeo : infillGeo
-    if (!geo) return null
-    geo.computeBoundingBox()
-    const box = geo.boundingBox!
-    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
-  }, [parts, frameGeo, infillGeo])
-  const getPartOverrides = useCallback(
-    (id: string) => parts.find(p => p.id === id)?.overrides, [parts]
-  )
-  const updatePartOverrides = useCallback((ids: Set<string>, partial: Partial<PartOverrides>) => {
-    setParts(prev => prev.map(p => (ids.has(p.id) ? { ...p, overrides: { ...p.overrides, ...partial } } : p)))
-  }, [])
-  const getAllPartOverrides = useCallback((): Record<string, PartOverrides> => {
-    const r: Record<string, PartOverrides> = {}
-    for (const p of parts) r[p.id] = p.overrides
-    return r
-  }, [parts])
-
-  useEffect(() => {
-    if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
-    }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
-
-  useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds, onSelectionChange])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if ((e.target as HTMLElement)?.tagName === 'INPUT') return
-        deleteSelected()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [deleteSelected])
-
-  const onSelect = useCallback((id: string, e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation()
-    const isMulti = e.nativeEvent.metaKey || e.nativeEvent.ctrlKey
-    setSelectedIds(prev => {
-      if (isMulti) {
-        const next = new Set(prev)
-        next.has(id) ? next.delete(id) : next.add(id)
-        return next
-      }
-      return prev.size === 1 && prev.has(id) ? new Set() : new Set([id])
-    })
-  }, [])
-
-  const onHover = useCallback((id: string, e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation()
-    setHoveredId(id)
-    document.body.style.cursor = 'pointer'
-  }, [])
-
-  const onUnhover = useCallback(() => {
-    setHoveredId(null)
-    document.body.style.cursor = 'default'
-  }, [])
-
-  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
-  const onCanvasPointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
-    pointerDownPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY }
-  }, [])
-  const onCanvasClick = useCallback((e: ThreeEvent<MouseEvent>) => {
-    if (pointerDownPos.current) {
-      const dx = e.nativeEvent.clientX - pointerDownPos.current.x
-      const dy = e.nativeEvent.clientY - pointerDownPos.current.y
-      if (dx * dx + dy * dy > 25) return
-    }
-    setSelectedIds(new Set())
-  }, [])
-
-  function matColor(id: string) {
-    if (selectedIds.has(id)) return '#ff6b6b'
-    if (hoveredId === id) return '#a0c4ff'
-    return '#4488cc'
-  }
+  const {
+    parts, selectedIds, hoveredId,
+    deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides,
+    onSelect, onHover, onUnhover, onCanvasPointerDown, onCanvasClick,
+    matColor, hasPart, partOv,
+  } = usePartInteraction<InfillPartType>({
+    initialParts: INITIAL_PARTS,
+    modelRef,
+    onSelectionChange,
+  })
 
   // Frame geometry — bevel controlled by per-part overrides
-  const frameBevel = parts.find(p => p.id === 'frame')?.overrides ?? DEFAULT_OVERRIDES
+  const frameBevel = parts.find((p) => p.id === 'frame')?.overrides ?? DEFAULT_OVERRIDES
   const frameGeo = useMemo(() => {
     const shape = createOuterFrame(hw, H, T)
     const bevelSize = frameBevel.bevelRadius * T * 0.25
@@ -382,8 +276,22 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
     return generateInfill(pattern, hw, H, T, cellSize, infillWall, depth, fromTop)
   }, [pattern, hw, H, T, cellSize, infillWall, depth, fromTop])
 
-  const hasPart = (type: string) => parts.some(p => p.type === type)
-  const partOv = (type: string) => parts.find(p => p.type === type)?.overrides ?? DEFAULT_OVERRIDES
+  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
+    const part = parts.find((p) => p.id === id)
+    if (!part) return null
+    const geo = part.type === 'frame' ? frameGeo : infillGeo
+    if (!geo) return null
+    geo.computeBoundingBox()
+    const box = geo.boundingBox!
+    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
+  }, [parts, frameGeo, infillGeo])
+
+  // Expose handle to parent
+  useEffect(() => {
+    if (handleRef) {
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
+    }
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
 
   return (
     <group ref={groupRef} onPointerDown={onCanvasPointerDown} onClick={onCanvasClick}>
@@ -395,32 +303,32 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
       <group ref={modelRef} position={[0, -H / 3, 0]}>
         {/* Outer frame */}
         {hasPart('frame') && (() => {
-          const ov = partOv('frame')
+          const ov = partOv('frame') ?? DEFAULT_OVERRIDES
           return (
             <mesh
               geometry={frameGeo}
               scale={[ov.scaleX, ov.scaleY, ov.scaleZ]}
-              onClick={e => onSelect('frame', e)}
-              onPointerOver={e => onHover('frame', e)}
+              onClick={(e) => onSelect('frame', e)}
+              onPointerOver={(e) => onHover('frame', e)}
               onPointerOut={onUnhover}
             >
-              <meshStandardMaterial color={matColor('frame')} roughness={roughness} metalness={metalness} />
+              <meshStandardMaterial color={matColor('frame', '#4488cc')} roughness={roughness} metalness={metalness} />
             </mesh>
           )
         })()}
 
         {/* Infill */}
         {hasPart('infill') && infillGeo && (() => {
-          const ov = partOv('infill')
+          const ov = partOv('infill') ?? DEFAULT_OVERRIDES
           return (
             <mesh
               geometry={infillGeo}
               scale={[ov.scaleX, ov.scaleY, ov.scaleZ]}
-              onClick={e => onSelect('infill', e)}
-              onPointerOver={e => onHover('infill', e)}
+              onClick={(e) => onSelect('infill', e)}
+              onPointerOver={(e) => onHover('infill', e)}
               onPointerOut={onUnhover}
             >
-              <meshStandardMaterial color={matColor('infill')} roughness={roughness} metalness={metalness} />
+              <meshStandardMaterial color={matColor('infill', '#4488cc')} roughness={roughness} metalness={metalness} />
             </mesh>
           )
         })()}

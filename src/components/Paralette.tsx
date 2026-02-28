@@ -1,16 +1,12 @@
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useMemo, useEffect, useCallback, useRef } from 'react'
 import * as THREE from 'three'
 import { Evaluator, Brush, ADDITION, SUBTRACTION } from 'three-bvh-csg'
 import { RoundedBoxGeometry } from 'three-stdlib'
-import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
 import type { PartOverrides, ProjectHandle, PartBaseDimensions } from '../types'
+import { usePartInteraction, type PartData } from '../hooks/usePartInteraction'
 
-interface PartData {
-  id: string
-  type: 'frame' | 'grip' | 'foot-left' | 'foot-right'
-  overrides: PartOverrides
-}
+type ParalettePartType = 'frame' | 'grip' | 'foot-left' | 'foot-right'
 
 interface ParaletteProps {
   params: ProjectParams
@@ -20,6 +16,13 @@ interface ParaletteProps {
 }
 
 const DEFAULT_OVERRIDES: PartOverrides = { scaleX: 1, scaleY: 1, scaleZ: 1, bevelRadius: 0, bevelSegments: 1 }
+
+const INITIAL_PARTS: PartData<ParalettePartType>[] = [
+  { id: 'frame', type: 'frame', overrides: { ...DEFAULT_OVERRIDES } },
+  { id: 'grip', type: 'grip', overrides: { ...DEFAULT_OVERRIDES } },
+  { id: 'foot-left', type: 'foot-left', overrides: { ...DEFAULT_OVERRIDES } },
+  { id: 'foot-right', type: 'foot-right', overrides: { ...DEFAULT_OVERRIDES } },
+]
 
 export default function Paralette({ params, onSelectionChange, handleRef }: ParaletteProps) {
   const groupRef = useRef<THREE.Group>(null)
@@ -36,124 +39,21 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
   const roughness = 0.5
   const metalness = 0.1
 
-  const [parts, setParts] = useState<PartData[]>([])
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
-
-  useEffect(() => {
-    setParts([
-      { id: 'frame', type: 'frame', overrides: { ...DEFAULT_OVERRIDES } },
-      { id: 'grip', type: 'grip', overrides: { ...DEFAULT_OVERRIDES } },
-      { id: 'foot-left', type: 'foot-left', overrides: { ...DEFAULT_OVERRIDES } },
-      { id: 'foot-right', type: 'foot-right', overrides: { ...DEFAULT_OVERRIDES } },
-    ])
-    setSelectedIds(new Set())
-  }, [])
-
-  const deleteSelected = useCallback(() => {
-    if (selectedIds.size > 0) {
-      setParts(prev => prev.filter(p => !selectedIds.has(p.id)))
-      setSelectedIds(new Set())
-    }
-  }, [selectedIds])
-
-  const getGroup = useCallback(() => modelRef.current, [])
-  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
-    const part = parts.find(p => p.id === id)
-    if (!part) return null
-    const geoMap: Record<string, THREE.BufferGeometry | null> = {
-      frame: frameGeo,
-      grip: gripTubeGeo,
-      'foot-left': footGeo,
-      'foot-right': footGeo,
-    }
-    const geo = geoMap[part.type]
-    if (!geo) return null
-    geo.computeBoundingBox()
-    const box = geo.boundingBox!
-    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
-  }, [parts, frameGeo, gripTubeGeo, footGeo])
-  const getPartOverrides = useCallback(
-    (id: string) => parts.find(p => p.id === id)?.overrides, [parts]
-  )
-  const updatePartOverrides = useCallback((ids: Set<string>, partial: Partial<PartOverrides>) => {
-    setParts(prev => prev.map(p => (ids.has(p.id) ? { ...p, overrides: { ...p.overrides, ...partial } } : p)))
-  }, [])
-  const getAllPartOverrides = useCallback((): Record<string, PartOverrides> => {
-    const r: Record<string, PartOverrides> = {}
-    for (const p of parts) r[p.id] = p.overrides
-    return r
-  }, [parts])
-
-  useEffect(() => {
-    if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
-    }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
-
-  useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds, onSelectionChange])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if ((e.target as HTMLElement)?.tagName === 'INPUT') return
-        deleteSelected()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [deleteSelected])
-
-  const onSelect = useCallback((id: string, e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation()
-    const isMulti = e.nativeEvent.metaKey || e.nativeEvent.ctrlKey
-    setSelectedIds(prev => {
-      if (isMulti) {
-        const next = new Set(prev)
-        next.has(id) ? next.delete(id) : next.add(id)
-        return next
-      }
-      return prev.size === 1 && prev.has(id) ? new Set() : new Set([id])
-    })
-  }, [])
-
-  const onHover = useCallback((id: string, e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation()
-    setHoveredId(id)
-    document.body.style.cursor = 'pointer'
-  }, [])
-
-  const onUnhover = useCallback(() => {
-    setHoveredId(null)
-    document.body.style.cursor = 'default'
-  }, [])
-
-  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
-  const onCanvasPointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
-    pointerDownPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY }
-  }, [])
-  const onCanvasClick = useCallback((e: ThreeEvent<MouseEvent>) => {
-    if (pointerDownPos.current) {
-      const dx = e.nativeEvent.clientX - pointerDownPos.current.x
-      const dy = e.nativeEvent.clientY - pointerDownPos.current.y
-      if (dx * dx + dy * dy > 25) return // dragged — don't deselect
-    }
-    setSelectedIds(new Set())
-  }, [])
-
-  function matColor(id: string) {
-    if (selectedIds.has(id)) return '#ff6b6b'
-    if (hoveredId === id) return '#a0c4ff'
-    return '#4488cc'
-  }
+  const {
+    parts, selectedIds, hoveredId,
+    deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides,
+    onSelect, onHover, onUnhover, onCanvasPointerDown, onCanvasClick,
+    matColor, hasPart, partOv,
+  } = usePartInteraction<ParalettePartType>({
+    initialParts: INITIAL_PARTS,
+    modelRef,
+    onSelectionChange,
+  })
 
   // ── Derived values ──
   const hw = W / 2
   const gripInnerR = gripDia / 2
-  // Grip outer radius: wall = T*0.4, outer ≈ inner + 0.4T
-  // Reference analysis: outer radius ≈ 1.2x T, inner ≈ 0.73x T → wall ≈ 0.47T
   const gripOuterR = gripDia / 2 + T * 0.4
-  // Near-max corner radius for tube-like bar cross-sections
   const cornerR = T * 0.48
   const legLength = Math.sqrt(hw * hw + H * H)
   const legAngle = Math.atan2(H, hw)
@@ -163,18 +63,14 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
     try {
       const evaluator = new Evaluator()
       const segs = 6
-
-      // Extend legs past apex so they overlap well inside the grip ring
       const legExt = gripOuterR * 0.9
       const extLegLen = legLength + legExt
       const shiftX = (legExt / 2) * (hw / legLength)
       const shiftY = (legExt / 2) * (H / legLength)
 
-      // Base bar — horizontal, centered at origin
       const baseBrush = new Brush(new RoundedBoxGeometry(W, T, depth, segs, cornerR))
       baseBrush.updateMatrixWorld()
 
-      // Left leg — from (-hw, 0) toward and past (0, H)
       const leftLegBrush = new Brush(new RoundedBoxGeometry(extLegLen, T, depth, segs, cornerR))
       leftLegBrush.position.set(-hw / 2 + shiftX, H / 2 + shiftY, 0)
       leftLegBrush.rotation.set(0, 0, legAngle)
@@ -183,7 +79,6 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
       let result = evaluator.evaluate(baseBrush, leftLegBrush, ADDITION)
       result.updateMatrixWorld()
 
-      // Right leg — from (hw, 0) toward and past (0, H)
       const rightLegBrush = new Brush(new RoundedBoxGeometry(extLegLen, T, depth, segs, cornerR))
       rightLegBrush.position.set(hw / 2 - shiftX, H / 2 + shiftY, 0)
       rightLegBrush.rotation.set(0, 0, Math.PI - legAngle)
@@ -192,8 +87,6 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
       result = evaluator.evaluate(result, rightLegBrush, ADDITION)
       result.updateMatrixWorld()
 
-      // Apex cap — solid cylinder at top, integrated into the frame (height = frame depth)
-      // This creates the grip ring visible from the front view
       const capBrush = new Brush(new THREE.CylinderGeometry(gripOuterR, gripOuterR, depth + 0.01, 32))
       capBrush.position.set(0, H, 0)
       capBrush.rotation.set(Math.PI / 2, 0, 0)
@@ -202,7 +95,6 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
       result = evaluator.evaluate(result, capBrush, ADDITION)
       result.updateMatrixWorld()
 
-      // Grip hole — subtract cylinder through the ring
       const holeBrush = new Brush(new THREE.CylinderGeometry(gripInnerR, gripInnerR, depth * 3, 32))
       holeBrush.position.set(0, H, 0)
       holeBrush.rotation.set(Math.PI / 2, 0, 0)
@@ -216,15 +108,11 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
       return finalGeo
     } catch (err) {
       console.warn('CSG evaluation failed for paralette frame:', err)
-      const geo = new THREE.BoxGeometry(W, H, depth)
-      return geo
+      return new THREE.BoxGeometry(W, H, depth)
     }
   }, [W, H, T, depth, hw, legLength, legAngle, cornerR, gripOuterR, gripInnerR])
 
   // ── Grip tube (hollow cylinder extending along Z at apex) ──
-  // Outer radius is slightly smaller than the CSG apex cap so the tube
-  // hides behind the frame within the frame depth — only the extensions
-  // beyond the frame are visible, avoiding z-fighting.
   const gripTubeGeo = useMemo(() => {
     const totalLen = depth + gripExt * 2
     const tubeOuterR = gripOuterR - 0.005
@@ -247,8 +135,28 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
     return geo
   }, [footR, depth])
 
-  const hasPart = (type: string) => parts.some(p => p.type === type)
-  const partOv = (type: string) => parts.find(p => p.type === type)?.overrides ?? DEFAULT_OVERRIDES
+  const getPartBaseDimensions = useCallback((id: string): PartBaseDimensions | null => {
+    const part = parts.find((p) => p.id === id)
+    if (!part) return null
+    const geoMap: Record<string, THREE.BufferGeometry | null> = {
+      frame: frameGeo,
+      grip: gripTubeGeo,
+      'foot-left': footGeo,
+      'foot-right': footGeo,
+    }
+    const geo = geoMap[part.type]
+    if (!geo) return null
+    geo.computeBoundingBox()
+    const box = geo.boundingBox!
+    return { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z }
+  }, [parts, frameGeo, gripTubeGeo, footGeo])
+
+  // Expose handle to parent
+  useEffect(() => {
+    if (handleRef) {
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions }
+    }
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getPartBaseDimensions])
 
   return (
     <group ref={groupRef} onPointerDown={onCanvasPointerDown} onClick={onCanvasClick}>
@@ -258,70 +166,70 @@ export default function Paralette({ params, onSelectionChange, handleRef }: Para
       </mesh>
 
       <group ref={modelRef} position={[0, -H / 2, 0]}>
-        {/* Frame — CSG union of rounded bars with grip hole */}
+        {/* Frame */}
         {hasPart('frame') && (() => {
-          const ov = partOv('frame')
+          const ov = partOv('frame') ?? DEFAULT_OVERRIDES
           return (
             <mesh
               geometry={frameGeo}
               scale={[ov.scaleX, ov.scaleY, ov.scaleZ]}
-              onClick={e => onSelect('frame', e)}
-              onPointerOver={e => onHover('frame', e)}
+              onClick={(e) => onSelect('frame', e)}
+              onPointerOver={(e) => onHover('frame', e)}
               onPointerOut={onUnhover}
             >
-              <meshStandardMaterial color={matColor('frame')} roughness={roughness} metalness={metalness} />
+              <meshStandardMaterial color={matColor('frame', '#4488cc')} roughness={roughness} metalness={metalness} />
             </mesh>
           )
         })()}
 
         {/* Grip tube at apex */}
         {hasPart('grip') && (() => {
-          const ov = partOv('grip')
+          const ov = partOv('grip') ?? DEFAULT_OVERRIDES
           return (
             <mesh
               geometry={gripTubeGeo}
               position={[0, H, 0]}
               rotation={[Math.PI / 2, 0, 0]}
               scale={[ov.scaleX, ov.scaleY, ov.scaleZ]}
-              onClick={e => onSelect('grip', e)}
-              onPointerOver={e => onHover('grip', e)}
+              onClick={(e) => onSelect('grip', e)}
+              onPointerOver={(e) => onHover('grip', e)}
               onPointerOut={onUnhover}
             >
-              <meshStandardMaterial color={matColor('grip')} roughness={roughness} metalness={metalness} />
+              <meshStandardMaterial color={matColor('grip', '#4488cc')} roughness={roughness} metalness={metalness} />
             </mesh>
           )
         })()}
 
-        {/* Left foot — capsule along depth at bottom-left corner */}
+        {/* Left foot */}
         {hasPart('foot-left') && (() => {
-          const ov = partOv('foot-left')
+          const ov = partOv('foot-left') ?? DEFAULT_OVERRIDES
           return (
             <mesh
               geometry={footGeo}
               position={[-hw, -T / 2 + footR * 0.1, 0]}
               scale={[ov.scaleX, footH / footR * ov.scaleY, ov.scaleZ]}
-              onClick={e => onSelect('foot-left', e)}
-              onPointerOver={e => onHover('foot-left', e)}
+              onClick={(e) => onSelect('foot-left', e)}
+              onPointerOver={(e) => onHover('foot-left', e)}
               onPointerOut={onUnhover}
             >
-              <meshStandardMaterial color={matColor('foot-left')} roughness={roughness} metalness={metalness} />
+              <meshStandardMaterial color={matColor('foot-left', '#4488cc')} roughness={roughness} metalness={metalness} />
             </mesh>
           )
         })()}
 
-        {/* Right foot — capsule along depth at bottom-right corner */}
+        {/* Right foot */}
         {hasPart('foot-right') && (() => {
-          const ov = partOv('foot-right')
+          const ov = partOv('foot-right') ?? DEFAULT_OVERRIDES
           return (
             <mesh
               geometry={footGeo}
               position={[hw, -T / 2 + footR * 0.1, 0]}
               scale={[ov.scaleX, footH / footR * ov.scaleY, ov.scaleZ]}
-              onClick={e => onSelect('foot-right', e)}
-              onPointerOver={e => onHover('foot-right', e)}
+              onClick={(e) => onSelect('foot-right', e)}
+              onPointerOver={(e) => onHover('foot-right', e)}
               onPointerOut={onUnhover}
             >
-              <meshStandardMaterial color={matColor('foot-right')} roughness={roughness} metalness={metalness} />
+              <meshStandardMaterial color={matColor('foot-right', '#4488cc')} roughness={roughness} metalness={metalness} />
             </mesh>
           )
         })()}
