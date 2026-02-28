@@ -3,45 +3,19 @@ import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { Download } from 'lucide-react'
 import type { ProjectParams } from '../projects'
-
-interface ParamDef {
-  key: string
-  label: string
-  min: number
-  max: number
-  step: number
-  group: string
-}
-
-const WAVY_PARAMS: ParamDef[] = [
-  // Dimensions
-  { key: 'baseWidth', label: 'Base Width', min: 1, max: 8, step: 0.1, group: 'Dimensions' },
-  { key: 'baseDepth', label: 'Base Depth', min: 1, max: 8, step: 0.1, group: 'Dimensions' },
-  { key: 'baseHeight', label: 'Base Height', min: 0.05, max: 0.5, step: 0.01, group: 'Dimensions' },
-  // Counts & Spacing
-  { key: 'finCount', label: 'Fin Count', min: 2, max: 12, step: 1, group: 'Counts & Spacing' },
-  { key: 'finThickness', label: 'Fin Thickness', min: 0.02, max: 0.3, step: 0.01, group: 'Counts & Spacing' },
-  // Wave Profile
-  { key: 'waveAvg', label: 'Wave Average Height', min: 0.5, max: 3, step: 0.05, group: 'Wave Profile' },
-  { key: 'waveA', label: 'Wave Amplitude A', min: 0, max: 1, step: 0.01, group: 'Wave Profile' },
-  { key: 'waveB', label: 'Wave Amplitude B', min: 0, max: 1, step: 0.01, group: 'Wave Profile' },
-  // Material
-  { key: 'roughness', label: 'Roughness', min: 0, max: 1, step: 0.05, group: 'Material' },
-  { key: 'metalness', label: 'Metalness', min: 0, max: 1, step: 0.05, group: 'Material' },
-]
+import type { ParamDef } from '../types'
 
 interface ParameterPanelProps {
   params: ProjectParams
   onChange: (params: ProjectParams) => void
-  selectedFinId: string | null
-  onDelete: () => void
+  paramDefs: ParamDef[]
   onExportSTL: () => void
   onExportGLB: () => Promise<void>
 }
 
-export default function ParameterPanel({ params, onChange, selectedFinId, onDelete, onExportSTL, onExportGLB }: ParameterPanelProps) {
+export default function ParameterPanel({ params, onChange, paramDefs, onExportSTL, onExportGLB }: ParameterPanelProps) {
   const [exporting, setExporting] = useState(false)
-  const groups = WAVY_PARAMS.reduce<Record<string, ParamDef[]>>((acc, p) => {
+  const groups = paramDefs.reduce<Record<string, ParamDef[]>>((acc, p) => {
     if (!acc[p.group]) acc[p.group] = []
     acc[p.group].push(p)
     return acc
@@ -56,37 +30,46 @@ export default function ParameterPanel({ params, onChange, selectedFinId, onDele
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{group}</p>
           {defs.map((def) => (
             <div key={def.key} className="space-y-1">
-              <Label className="text-xs flex justify-between">
-                <span>{def.label}</span>
-                <span className="text-muted-foreground font-mono">
-                  {def.step >= 1 ? Math.round(params[def.key]) : params[def.key].toFixed(2)}
-                </span>
-              </Label>
-              <Slider
-                min={def.min}
-                max={def.max}
-                step={def.step}
-                value={[params[def.key]]}
-                onValueChange={([v]) => onChange({ ...params, [def.key]: v })}
-              />
+              {def.options ? (
+                <>
+                  <Label className="text-xs"><span>{def.label}</span></Label>
+                  <div className="flex flex-wrap gap-1">
+                    {def.options.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => onChange({ ...params, [def.key]: opt.value })}
+                        className={`px-2 py-1 text-xs rounded border transition-colors ${
+                          params[def.key] === opt.value
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background hover:bg-muted border-border'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Label className="text-xs flex justify-between">
+                    <span>{def.label}</span>
+                    <span className="text-muted-foreground font-mono">
+                      {def.step >= 1 ? Math.round(params[def.key]) : params[def.key].toFixed(2)}
+                    </span>
+                  </Label>
+                  <Slider
+                    min={def.min}
+                    max={def.max}
+                    step={def.step}
+                    value={[params[def.key]]}
+                    onValueChange={([v]) => onChange({ ...params, [def.key]: v })}
+                  />
+                </>
+              )}
             </div>
           ))}
         </div>
       ))}
-
-      {/* Delete section */}
-      <div className="border-t pt-3 space-y-2">
-        <p className="text-xs text-muted-foreground">
-          Click a fin to select it. Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Delete</kbd> or use the button to remove it.
-        </p>
-        <button
-          disabled={!selectedFinId}
-          onClick={onDelete}
-          className="w-full px-3 py-1.5 text-sm rounded bg-destructive text-destructive-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-destructive/90 transition-colors"
-        >
-          Delete Selected Fin
-        </button>
-      </div>
 
       {/* Export section */}
       <div className="border-t pt-3 space-y-2">

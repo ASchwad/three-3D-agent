@@ -1,11 +1,114 @@
-import { Suspense, useState, useRef, useCallback } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Suspense, useState, useRef, useCallback, useEffect } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, Grid } from '@react-three/drei'
+import * as THREE from 'three'
 import { projects, type ProjectParams } from './projects'
 import ParameterPanel from './components/ParameterPanel'
+import SelectionPanel from './components/SelectionPanel'
 import { downloadSTL, downloadGLB } from './lib/export'
 import { cn } from './lib/utils'
-import type { WavyStructureHandle } from './components/WavyStructure'
+import type { ProjectHandle, PartOverrides, BevelCapabilities } from './types'
+
+function CameraAPI({
+  handleRef,
+  controlsRef,
+}: {
+  handleRef: React.MutableRefObject<ProjectHandle | null>
+  controlsRef: React.MutableRefObject<any>
+}) {
+  const camera = useThree((s) => s.camera)
+  const gl = useThree((s) => s.gl)
+  const scene = useThree((s) => s.scene)
+
+  useEffect(() => {
+    ;(window as any).__three3d = {
+      setCameraView: (viewName: string) => {
+        const group = handleRef.current?.getGroup()
+        if (!group) return false
+
+        const box = new THREE.Box3().setFromObject(group)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+        const maxDim = Math.max(size.x, size.y, size.z)
+        const dist = maxDim * 2.5
+
+        const positions: Record<string, [number, number, number]> = {
+          front: [center.x, center.y, center.z + dist],
+          back: [center.x, center.y, center.z - dist],
+          right: [center.x + dist, center.y, center.z],
+          left: [center.x - dist, center.y, center.z],
+          top: [center.x, center.y + dist, center.z + 0.001],
+          perspective: [
+            center.x + dist * 0.7,
+            center.y + dist * 0.5,
+            center.z + dist * 0.7,
+          ],
+        }
+
+        const pos = positions[viewName]
+        if (!pos) return false
+
+        camera.position.set(pos[0], pos[1], pos[2])
+        camera.lookAt(center)
+
+        if (controlsRef.current) {
+          controlsRef.current.target.copy(center)
+          controlsRef.current.update()
+        }
+
+        gl.render(scene, camera)
+        return true
+      },
+
+      setCameraPosition: (
+        x: number, y: number, z: number,
+        tx = 0, ty = 0, tz = 0,
+      ) => {
+        camera.position.set(x, y, z)
+        const target = new THREE.Vector3(tx, ty, tz)
+        camera.lookAt(target)
+
+        if (controlsRef.current) {
+          controlsRef.current.target.copy(target)
+          controlsRef.current.update()
+        }
+
+        gl.render(scene, camera)
+        return true
+      },
+
+      hideUI: () => {
+        const root = document.querySelector('.relative')
+        if (!root) return
+        Array.from(root.children).forEach((child) => {
+          const el = child as HTMLElement
+          if (el.tagName.toLowerCase() !== 'canvas' && !el.querySelector('canvas')) {
+            el.dataset.wasVisible = el.style.display
+            el.style.display = 'none'
+          }
+        })
+      },
+
+      showUI: () => {
+        const root = document.querySelector('.relative')
+        if (!root) return
+        Array.from(root.children).forEach((child) => {
+          const el = child as HTMLElement
+          if (el.dataset.wasVisible !== undefined) {
+            el.style.display = el.dataset.wasVisible
+            delete el.dataset.wasVisible
+          }
+        })
+      },
+    }
+
+    return () => {
+      delete (window as any).__three3d
+    }
+  }, [camera, gl, scene, handleRef, controlsRef])
+
+  return null
+}
 
 function Scene({
   activeProjectId,
@@ -17,10 +120,11 @@ function Scene({
   activeProjectId: string
   params: ProjectParams
   onParamsChange: (p: ProjectParams) => void
-  onSelectionChange: (id: string | null) => void
-  handleRef: React.MutableRefObject<WavyStructureHandle | null>
+  onSelectionChange: (ids: Set<string>) => void
+  handleRef: React.MutableRefObject<ProjectHandle | null>
 }) {
   const activeProject = projects.find((p) => p.id === activeProjectId)
+  const controlsRef = useRef<any>(null)
 
   return (
     <>
@@ -49,7 +153,8 @@ function Scene({
           />
         )}
       </Suspense>
-      <OrbitControls makeDefault />
+      <CameraAPI handleRef={handleRef} controlsRef={controlsRef} />
+      <OrbitControls ref={controlsRef} makeDefault />
     </>
   )
 }
@@ -63,10 +168,13 @@ function App() {
     }
     return map
   })
-  const [selectedFinId, setSelectedFinId] = useState<string | null>(null)
-  const handleRef = useRef<WavyStructureHandle | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [partOverrides, setPartOverrides] = useState<Record<string, PartOverrides>>({})
+  const [bevelCapabilities, setBevelCapabilities] = useState<BevelCapabilities>({})
+  const handleRef = useRef<ProjectHandle | null>(null)
 
   const activeParams = paramsMap[activeProjectId] ?? {}
+  const activeProject = projects.find((p) => p.id === activeProjectId)
 
   const onParamsChange = useCallback(
     (newParams: ProjectParams) => {
@@ -75,15 +183,26 @@ function App() {
     [activeProjectId]
   )
 
-  const onSelectionChange = useCallback((id: string | null) => {
-    setSelectedFinId(id)
+  const onSelectionChange = useCallback((ids: Set<string>) => {
+    setSelectedIds(ids)
+    const allOverrides = handleRef.current?.getAllPartOverrides()
+    if (allOverrides) {
+      setPartOverrides(allOverrides)
+    }
+    setBevelCapabilities(handleRef.current?.getBevelCapabilities() ?? {})
+  }, [])
+
+  const onPartOverridesChange = useCallback((ids: Set<string>, partial: Partial<PartOverrides>) => {
+    handleRef.current?.updatePartOverrides(ids, partial)
+    const allOverrides = handleRef.current?.getAllPartOverrides()
+    if (allOverrides) {
+      setPartOverrides(allOverrides)
+    }
   }, [])
 
   const onDelete = useCallback(() => {
-    handleRef.current?.deleteFin()
+    handleRef.current?.deleteSelected()
   }, [])
-
-  const activeProject = projects.find((p) => p.id === activeProjectId)
 
   const onExportSTL = useCallback(() => {
     const group = handleRef.current?.getGroup()
@@ -97,7 +216,7 @@ function App() {
 
   return (
     <div className="w-screen h-screen bg-[#a0a0a0] relative">
-      <Canvas shadows camera={{ position: [4, 3.5, 4], fov: 45 }}>
+      <Canvas shadows camera={{ position: [6, 5, 8], fov: 45 }}>
         <Scene
           activeProjectId={activeProjectId}
           params={activeParams}
@@ -116,7 +235,9 @@ function App() {
               key={p.id}
               onClick={() => {
                 setActiveProjectId(p.id)
-                setSelectedFinId(null)
+                setSelectedIds(new Set())
+                setPartOverrides({})
+                setBevelCapabilities({})
               }}
               className={cn(
                 'w-full text-left px-3 py-2 rounded text-sm transition-colors',
@@ -139,15 +260,28 @@ function App() {
         </div>
       </div>
 
-      {/* Parameter Panel - Right Side */}
-      <ParameterPanel
-        params={activeParams}
-        onChange={onParamsChange}
-        selectedFinId={selectedFinId}
-        onDelete={onDelete}
-        onExportSTL={onExportSTL}
-        onExportGLB={onExportGLB}
-      />
+      {/* Parameter Panel - Top Right */}
+      {activeProject && (
+        <ParameterPanel
+          params={activeParams}
+          onChange={onParamsChange}
+          paramDefs={activeProject.paramDefs}
+          onExportSTL={onExportSTL}
+          onExportGLB={onExportGLB}
+        />
+      )}
+
+      {/* Selection Panel - Bottom Right (only when parts selected) */}
+      {activeProject && selectedIds.size > 0 && (
+        <SelectionPanel
+          partLabel={activeProject.partLabel}
+          selectedIds={selectedIds}
+          partOverrides={partOverrides}
+          bevelCapabilities={bevelCapabilities}
+          onPartOverridesChange={onPartOverridesChange}
+          onDelete={onDelete}
+        />
+      )}
     </div>
   )
 }
