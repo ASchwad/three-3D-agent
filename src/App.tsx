@@ -9,6 +9,7 @@ import { downloadSTL, downloadGLB } from './lib/export'
 import { cn } from './lib/utils'
 import { Orbit } from 'lucide-react'
 import type { ProjectHandle, PartOverrides } from './types'
+import { convertParams, type UnitSystem } from './lib/units'
 
 function CameraAPI({
   handleRef,
@@ -119,36 +120,33 @@ function Lighting({ mode }: { mode: LightingMode }) {
       return (
         <>
           <ambientLight intensity={0.2} />
-          <directionalLight position={[1, 2, 0.5]} intensity={2.5} castShadow />
+          <directionalLight position={[10, 20, 5]} intensity={2.5} castShadow />
         </>
       )
     case 'studio':
       return (
         <>
           <ambientLight intensity={0.4} />
-          {/* Key light */}
-          <directionalLight position={[5, 8, 3]} intensity={1.5} castShadow />
-          {/* Fill light */}
-          <directionalLight position={[-4, 4, -2]} intensity={0.6} />
-          {/* Rim light */}
-          <directionalLight position={[0, 3, -8]} intensity={0.8} />
+          <directionalLight position={[50, 80, 30]} intensity={1.5} castShadow />
+          <directionalLight position={[-40, 40, -20]} intensity={0.6} />
+          <directionalLight position={[0, 30, -80]} intensity={0.8} />
         </>
       )
     case 'dramatic':
       return (
         <>
           <ambientLight intensity={0.1} />
-          <spotLight position={[0, 15, 0]} intensity={3} angle={0.5} penumbra={0.5} castShadow />
-          <directionalLight position={[-6, 2, -3]} intensity={0.6} color="#6688ff" />
+          <spotLight position={[0, 150, 0]} intensity={3} angle={0.5} penumbra={0.5} castShadow />
+          <directionalLight position={[-60, 20, -30]} intensity={0.6} color="#6688ff" />
         </>
       )
     default:
       return (
         <>
           <ambientLight intensity={0.8} />
-          <directionalLight position={[5, 12, 5]} intensity={1.2} castShadow />
-          <directionalLight position={[-3, 8, -5]} intensity={0.5} />
-          <directionalLight position={[0, 5, 8]} intensity={0.3} />
+          <directionalLight position={[50, 120, 50]} intensity={1.2} castShadow />
+          <directionalLight position={[-30, 80, -50]} intensity={0.5} />
+          <directionalLight position={[0, 50, 80]} intensity={0.3} />
         </>
       )
   }
@@ -178,14 +176,14 @@ function Scene({
     <>
       <Lighting mode={lightingMode} />
       <Grid
-        args={[20, 20]}
-        cellSize={1}
+        args={[200, 200]}
+        cellSize={10}
         cellThickness={0.5}
         cellColor="#6e6e6e"
-        sectionSize={5}
+        sectionSize={50}
         sectionThickness={1}
         sectionColor="#9d4b4b"
-        fadeDistance={30}
+        fadeDistance={300}
         infiniteGrid
       />
       <Suspense fallback={null}>
@@ -213,6 +211,7 @@ function App() {
     }
     return map
   })
+  const [unit, setUnit] = useState<UnitSystem>('mm')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [lightingMode, setLightingMode] = useState<LightingMode>('default')
   const [autoRotate, setAutoRotate] = useState(false)
@@ -228,6 +227,24 @@ function App() {
       setParamsMap((prev) => ({ ...prev, [activeProjectId]: newParams }))
     },
     [activeProjectId]
+  )
+
+  const onUnitChange = useCallback(
+    (newUnit: UnitSystem) => {
+      if (newUnit === unit) return
+      // Convert all project params from current unit to new unit
+      setParamsMap((prev) => {
+        const next = { ...prev }
+        for (const project of projects) {
+          if (next[project.id]) {
+            next[project.id] = convertParams(next[project.id], project.paramDefs, unit, newUnit)
+          }
+        }
+        return next
+      })
+      setUnit(newUnit)
+    },
+    [unit]
   )
 
   const onSelectionChange = useCallback((ids: Set<string>) => {
@@ -252,17 +269,17 @@ function App() {
 
   const onExportSTL = useCallback(() => {
     const group = handleRef.current?.getGroup()
-    if (group) downloadSTL(group, activeProject?.id ?? 'model')
-  }, [activeProject])
+    if (group) downloadSTL(group, activeProject?.id ?? 'model', unit)
+  }, [activeProject, unit])
 
   const onExportGLB = useCallback(async () => {
     const group = handleRef.current?.getGroup()
-    if (group) await downloadGLB(group, activeProject?.id ?? 'model')
-  }, [activeProject])
+    if (group) await downloadGLB(group, activeProject?.id ?? 'model', unit)
+  }, [activeProject, unit])
 
   return (
     <div className="w-screen h-screen bg-[#2a2a2a] relative">
-      <Canvas shadows camera={{ position: [6, 5, 8], fov: 45 }}>
+      <Canvas shadows camera={{ position: [60, 50, 80], fov: 45 }}>
         <Scene
           activeProjectId={activeProjectId}
           params={activeParams}
@@ -328,6 +345,9 @@ function App() {
           paramDefs={activeProject.paramDefs}
           onExportSTL={onExportSTL}
           onExportGLB={onExportGLB}
+          unit={unit}
+          onUnitChange={onUnitChange}
+          referenceImages={activeProject.referenceImages}
         />
       )}
 
