@@ -1,12 +1,11 @@
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
-import type { PartOverrides, BevelCapabilities } from '../types'
+import type { PartOverrides } from '../types'
 
 interface SelectionPanelProps {
   partLabel: string
   selectedIds: Set<string>
   partOverrides: Record<string, PartOverrides>
-  bevelCapabilities: BevelCapabilities
   onPartOverridesChange: (ids: Set<string>, partial: Partial<PartOverrides>) => void
   onDelete: () => void
 }
@@ -42,26 +41,23 @@ function getDisplayOverrides(selectedIds: Set<string>, partOverrides: Record<str
   }
 }
 
-export default function SelectionPanel({ partLabel, selectedIds, partOverrides, bevelCapabilities, onPartOverridesChange, onDelete }: SelectionPanelProps) {
+export default function SelectionPanel({ partLabel, selectedIds, partOverrides, onPartOverridesChange, onDelete }: SelectionPanelProps) {
   const selectionCount = selectedIds.size
   const displayOverrides = getDisplayOverrides(selectedIds, partOverrides)
 
-  const ids = Array.from(selectedIds)
-  const showRadius = ids.length > 0 && ids.every(id => bevelCapabilities[id]?.radius)
-  const showSegments = ids.length > 0 && ids.every(id => bevelCapabilities[id]?.segments)
-
   return (
-    <div className="absolute bottom-4 right-4 w-72 bg-background/90 backdrop-blur border rounded-lg p-4 space-y-3 z-10 max-h-[50vh] overflow-y-auto">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+    <div className="absolute top-4 right-4 w-80 bg-background/90 backdrop-blur border rounded-xl p-5 space-y-4 z-10 max-h-[75vh] overflow-y-auto">
+      <h3 className="font-semibold text-xs uppercase tracking-widest text-muted-foreground">
         {selectionCount === 1 ? `1 ${partLabel} Selected` : `${selectionCount} ${partLabel}s Selected`}
-      </p>
+      </h3>
 
       {/* Scale overrides */}
-      <div className="space-y-2">
-        <div className="space-y-1">
-          <Label className="text-xs flex justify-between">
+      <div className="space-y-3">
+        <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">Scale</p>
+        <div className="space-y-2">
+          <Label className="text-xs flex justify-between text-foreground/80">
             <span>Scale X</span>
-            <span className="text-muted-foreground font-mono">{displayOverrides.scaleX.toFixed(2)}</span>
+            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.scaleX.toFixed(2)}</span>
           </Label>
           <Slider
             min={0.1}
@@ -71,10 +67,10 @@ export default function SelectionPanel({ partLabel, selectedIds, partOverrides, 
             onValueChange={([v]) => onPartOverridesChange(selectedIds, { scaleX: v })}
           />
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs flex justify-between">
+        <div className="space-y-2">
+          <Label className="text-xs flex justify-between text-foreground/80">
             <span>Scale Y</span>
-            <span className="text-muted-foreground font-mono">{displayOverrides.scaleY.toFixed(2)}</span>
+            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.scaleY.toFixed(2)}</span>
           </Label>
           <Slider
             min={0.1}
@@ -84,10 +80,10 @@ export default function SelectionPanel({ partLabel, selectedIds, partOverrides, 
             onValueChange={([v]) => onPartOverridesChange(selectedIds, { scaleY: v })}
           />
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs flex justify-between">
+        <div className="space-y-2">
+          <Label className="text-xs flex justify-between text-foreground/80">
             <span>Scale Z</span>
-            <span className="text-muted-foreground font-mono">{displayOverrides.scaleZ.toFixed(2)}</span>
+            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.scaleZ.toFixed(2)}</span>
           </Label>
           <Slider
             min={0.1}
@@ -99,51 +95,47 @@ export default function SelectionPanel({ partLabel, selectedIds, partOverrides, 
         </div>
       </div>
 
+      <div className="h-px bg-border/30" />
+
       {/* Bevel overrides */}
-      {(showRadius || showSegments) && (
+      <div className="space-y-3">
+        <p className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-widest">Bevel</p>
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Bevel</p>
-          {showRadius && (
-            <div className="space-y-1">
-              <Label className="text-xs flex justify-between">
-                <span>Bevel Radius</span>
-                <span className="text-muted-foreground font-mono">{displayOverrides.bevelRadius.toFixed(2)}</span>
-              </Label>
-              <Slider
-                min={0}
-                max={1.0}
-                step={0.05}
-                value={[displayOverrides.bevelRadius]}
-                onValueChange={([v]) => onPartOverridesChange(selectedIds, { bevelRadius: v })}
-              />
-            </div>
-          )}
-          {showSegments && (
-            <div className="space-y-1">
-              <Label className="text-xs flex justify-between">
-                <span>Bevel Segments</span>
-                <span className="text-muted-foreground font-mono">{Math.round(displayOverrides.bevelSegments)}</span>
-              </Label>
-              <Slider
-                min={1}
-                max={8}
-                step={1}
-                value={[displayOverrides.bevelSegments]}
-                onValueChange={([v]) => onPartOverridesChange(selectedIds, { bevelSegments: v })}
-              />
-            </div>
-          )}
+          <Label className="text-xs flex justify-between text-foreground/80">
+            <span>Bevel Radius</span>
+            <span className="text-muted-foreground font-mono text-[11px]">{displayOverrides.bevelRadius.toFixed(2)}</span>
+          </Label>
+          <Slider
+            min={0}
+            max={1.0}
+            step={0.05}
+            value={[displayOverrides.bevelRadius]}
+            onValueChange={([v]) => onPartOverridesChange(selectedIds, { bevelRadius: v })}
+          />
         </div>
-      )}
+        <div className="space-y-2">
+          <Label className="text-xs flex justify-between text-foreground/80">
+            <span>Bevel Segments</span>
+            <span className="text-muted-foreground font-mono text-[11px]">{Math.round(displayOverrides.bevelSegments)}</span>
+          </Label>
+          <Slider
+            min={1}
+            max={8}
+            step={1}
+            value={[displayOverrides.bevelSegments]}
+            onValueChange={([v]) => onPartOverridesChange(selectedIds, { bevelSegments: v })}
+          />
+        </div>
+      </div>
 
       {/* Delete section */}
-      <div className="border-t pt-3 space-y-2">
+      <div className="border-t border-border/50 pt-4 space-y-3">
         <p className="text-xs text-muted-foreground">
-          Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Delete</kbd> or use the button to remove.
+          Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px]">Delete</kbd> or use the button to remove.
         </p>
         <button
           onClick={onDelete}
-          className="w-full px-3 py-1.5 text-sm rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+          className="w-full px-3 py-2 text-xs font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all"
         >
           {selectionCount === 1
             ? `Delete Selected ${partLabel}`

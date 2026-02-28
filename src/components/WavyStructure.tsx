@@ -2,11 +2,11 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
-import type { PartOverrides, ProjectHandle, BevelCapabilities } from '../types'
+import type { PartOverrides, ProjectHandle } from '../types'
 
-interface FinData {
+interface PartData {
   id: string
-  type: 'x' | 'z'
+  type: 'base' | 'x' | 'z'
   index: number
   overrides: PartOverrides
 }
@@ -101,21 +101,23 @@ export default function WavyStructure({ params, onSelectionChange, handleRef }: 
   const roughness = 0.4
   const metalness = 0.05
 
-  const [fins, setFins] = useState<FinData[]>([])
+  const [parts, setParts] = useState<PartData[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   useEffect(() => {
-    const newFins: FinData[] = []
-    for (let i = 0; i < finCount; i++) newFins.push({ id: `xfin-${i}`, type: 'x', index: i, overrides: { ...DEFAULT_OVERRIDES } })
-    for (let i = 0; i < finCount; i++) newFins.push({ id: `zfin-${i}`, type: 'z', index: i, overrides: { ...DEFAULT_OVERRIDES } })
-    setFins(newFins)
+    const newParts: PartData[] = [
+      { id: 'base', type: 'base', index: 0, overrides: { ...DEFAULT_OVERRIDES } },
+    ]
+    for (let i = 0; i < finCount; i++) newParts.push({ id: `xfin-${i}`, type: 'x', index: i, overrides: { ...DEFAULT_OVERRIDES } })
+    for (let i = 0; i < finCount; i++) newParts.push({ id: `zfin-${i}`, type: 'z', index: i, overrides: { ...DEFAULT_OVERRIDES } })
+    setParts(newParts)
     setSelectedIds(new Set())
   }, [finCount])
 
   const deleteSelected = useCallback(() => {
     if (selectedIds.size > 0) {
-      setFins((prev) => prev.filter((f) => !selectedIds.has(f.id)))
+      setParts((prev) => prev.filter((f) => !selectedIds.has(f.id)))
       setSelectedIds(new Set())
     }
   }, [selectedIds])
@@ -123,33 +125,46 @@ export default function WavyStructure({ params, onSelectionChange, handleRef }: 
   const getGroup = useCallback(() => modelRef.current, [])
 
   const getPartOverrides = useCallback((id: string): PartOverrides | undefined => {
-    return fins.find((f) => f.id === id)?.overrides
-  }, [fins])
+    return parts.find((f) => f.id === id)?.overrides
+  }, [parts])
 
   const updatePartOverrides = useCallback((ids: Set<string>, partial: Partial<PartOverrides>) => {
-    setFins((prev) =>
-      prev.map((f) =>
-        ids.has(f.id) ? { ...f, overrides: { ...f.overrides, ...partial } } : f
-      )
-    )
+    const hasBevelChange = partial.bevelRadius !== undefined || partial.bevelSegments !== undefined
+    setParts((prev) => {
+      // Find which fin types are being updated
+      const updatedTypes = hasBevelChange
+        ? new Set(prev.filter(f => ids.has(f.id)).map(f => f.type))
+        : null
+      return prev.map((f) => {
+        if (ids.has(f.id)) {
+          return { ...f, overrides: { ...f.overrides, ...partial } }
+        }
+        // Propagate bevel changes to all fins of the same type (geometry is shared)
+        if (updatedTypes?.has(f.type)) {
+          const bevelPatch: Partial<PartOverrides> = {}
+          if (partial.bevelRadius !== undefined) bevelPatch.bevelRadius = partial.bevelRadius
+          if (partial.bevelSegments !== undefined) bevelPatch.bevelSegments = partial.bevelSegments
+          return { ...f, overrides: { ...f.overrides, ...bevelPatch } }
+        }
+        return f
+      })
+    })
   }, [])
 
   const getAllPartOverrides = useCallback((): Record<string, PartOverrides> => {
     const result: Record<string, PartOverrides> = {}
-    for (const fin of fins) {
-      result[fin.id] = fin.overrides
+    for (const p of parts) {
+      result[p.id] = p.overrides
     }
     return result
-  }, [fins])
-
-  const getBevelCapabilities = useCallback((): BevelCapabilities => ({}), [])
+  }, [parts])
 
   // Expose handle to parent
   useEffect(() => {
     if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getBevelCapabilities }
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides }
     }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getBevelCapabilities])
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides])
 
   useEffect(() => {
     onSelectionChange?.(selectedIds)
@@ -200,30 +215,61 @@ export default function WavyStructure({ params, onSelectionChange, handleRef }: 
     document.body.style.cursor = 'default'
   }, [])
 
-  const onCanvasClick = useCallback(() => {
+  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
+  const onCanvasPointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    pointerDownPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY }
+  }, [])
+  const onCanvasClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    if (pointerDownPos.current) {
+      const dx = e.nativeEvent.clientX - pointerDownPos.current.x
+      const dy = e.nativeEvent.clientY - pointerDownPos.current.y
+      if (dx * dx + dy * dy > 25) return
+    }
     setSelectedIds(new Set())
   }, [])
+
+  // Derive bevel from fin overrides (shared per fin type)
+  const xFins = parts.filter(f => f.type === 'x')
+  const zFins = parts.filter(f => f.type === 'z')
+  const xBevelRadius = xFins.length > 0 ? xFins[0].overrides.bevelRadius : 0
+  const xBevelSegments = xFins.length > 0 ? xFins[0].overrides.bevelSegments : 1
+  const zBevelRadius = zFins.length > 0 ? zFins[0].overrides.bevelRadius : 0
+  const zBevelSegments = zFins.length > 0 ? zFins[0].overrides.bevelSegments : 1
 
   // Geometries
   const xFinGeo = useMemo(() => {
     const shape = createWavyFinShape(baseWidth, waveAvg, waveA, waveB)
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: finThickness, bevelEnabled: false })
+    const bevelSize = xBevelRadius * finThickness * 0.5
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: finThickness,
+      bevelEnabled: xBevelRadius > 0,
+      bevelThickness: bevelSize,
+      bevelSize,
+      bevelSegments: xBevelSegments,
+    })
     geo.computeVertexNormals()
     return geo
-  }, [baseWidth, finThickness, waveAvg, waveA, waveB])
+  }, [baseWidth, finThickness, waveAvg, waveA, waveB, xBevelRadius, xBevelSegments])
 
   const zFinGeo = useMemo(() => {
     const shape = createWavyFinShape(baseDepth, waveAvg, waveA, waveB)
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: finThickness, bevelEnabled: false })
+    const bevelSize = zBevelRadius * finThickness * 0.5
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: finThickness,
+      bevelEnabled: zBevelRadius > 0,
+      bevelThickness: bevelSize,
+      bevelSize,
+      bevelSegments: zBevelSegments,
+    })
     geo.computeVertexNormals()
     return geo
-  }, [baseDepth, finThickness, waveAvg, waveA, waveB])
+  }, [baseDepth, finThickness, waveAvg, waveA, waveB, zBevelRadius, zBevelSegments])
 
   const xSpacing = baseDepth / (finCount - 1 || 1)
   const zSpacing = baseWidth / (finCount - 1 || 1)
 
   return (
-    <group ref={groupRef} onClick={onCanvasClick}>
+    <group ref={groupRef} onPointerDown={onCanvasPointerDown} onClick={onCanvasClick}>
       {/* Invisible click-detection plane (excluded from export) */}
       <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[20, 20]} />
@@ -233,17 +279,37 @@ export default function WavyStructure({ params, onSelectionChange, handleRef }: 
       {/* Exportable model content */}
       <group ref={modelRef}>
         {/* Base plate */}
-        <mesh position={[0, baseHeight * 0.25, 0]}>
-          <boxGeometry args={[baseWidth + 0.12, baseHeight * 0.5, baseDepth + 0.12]} />
-          <meshStandardMaterial color={colorHex} roughness={roughness} metalness={metalness} />
-        </mesh>
-        <mesh position={[0, baseHeight * 0.75, 0]}>
-          <boxGeometry args={[baseWidth + 0.04, baseHeight * 0.5, baseDepth + 0.04]} />
-          <meshStandardMaterial color={colorHex} roughness={roughness} metalness={metalness} />
-        </mesh>
+        {parts.some(p => p.type === 'base') && (() => {
+          const baseSelected = selectedIds.has('base')
+          const baseHovered = hoveredId === 'base'
+          const baseColor = baseSelected ? '#ff6b6b' : baseHovered ? '#a0c4ff' : colorHex
+          const baseOv = parts.find(p => p.id === 'base')?.overrides ?? DEFAULT_OVERRIDES
+          return (
+            <group scale={[baseOv.scaleX, baseOv.scaleY, baseOv.scaleZ]}>
+              <mesh
+                position={[0, baseHeight * 0.25, 0]}
+                onClick={e => onSelect('base', e)}
+                onPointerOver={e => onHover('base', e)}
+                onPointerOut={onUnhover}
+              >
+                <boxGeometry args={[baseWidth + 0.12, baseHeight * 0.5, baseDepth + 0.12]} />
+                <meshStandardMaterial color={baseColor} roughness={roughness} metalness={metalness} />
+              </mesh>
+              <mesh
+                position={[0, baseHeight * 0.75, 0]}
+                onClick={e => onSelect('base', e)}
+                onPointerOver={e => onHover('base', e)}
+                onPointerOut={onUnhover}
+              >
+                <boxGeometry args={[baseWidth + 0.04, baseHeight * 0.5, baseDepth + 0.04]} />
+                <meshStandardMaterial color={baseColor} roughness={roughness} metalness={metalness} />
+              </mesh>
+            </group>
+          )
+        })()}
 
         {/* Fins */}
-        {fins.map((fin) => {
+        {parts.filter(p => p.type === 'x' || p.type === 'z').map((fin) => {
           const ov = fin.overrides
           if (fin.type === 'x') {
             return (

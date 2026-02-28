@@ -8,10 +8,6 @@ export interface PartOverrides {
   bevelSegments: number
 }
 
-export interface BevelCapabilities {
-  [partId: string]: { radius: boolean; segments: boolean }
-}
-
 export interface ProjectHandle {
   selectedIds: Set<string>
   deleteSelected: () => void
@@ -19,7 +15,6 @@ export interface ProjectHandle {
   getPartOverrides: (id: string) => PartOverrides | undefined
   updatePartOverrides: (ids: Set<string>, partial: Partial<PartOverrides>) => void
   getAllPartOverrides: () => Record<string, PartOverrides>
-  getBevelCapabilities: () => BevelCapabilities
 }
 
 export interface ParamDef {

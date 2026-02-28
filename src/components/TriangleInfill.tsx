@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Evaluator, Brush, INTERSECTION } from 'three-bvh-csg'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { ProjectParams } from '../projects'
-import type { PartOverrides, ProjectHandle, BevelCapabilities } from '../types'
+import type { PartOverrides, ProjectHandle } from '../types'
 
 const PATTERN = { NONE: 0, HONEYCOMB: 1, TRIANGLE: 2 } as const
 
@@ -289,16 +289,11 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
     return r
   }, [parts])
 
-  const getBevelCapabilities = useCallback((): BevelCapabilities => ({
-    frame: { radius: true, segments: true },
-    infill: { radius: false, segments: false },
-  }), [])
-
   useEffect(() => {
     if (handleRef) {
-      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getBevelCapabilities }
+      handleRef.current = { selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides }
     }
-  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides, getBevelCapabilities])
+  }, [handleRef, selectedIds, deleteSelected, getGroup, getPartOverrides, updatePartOverrides, getAllPartOverrides])
 
   useEffect(() => { onSelectionChange?.(selectedIds) }, [selectedIds, onSelectionChange])
 
@@ -337,7 +332,18 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
     document.body.style.cursor = 'default'
   }, [])
 
-  const onCanvasClick = useCallback(() => setSelectedIds(new Set()), [])
+  const pointerDownPos = useRef<{ x: number; y: number } | null>(null)
+  const onCanvasPointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    pointerDownPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY }
+  }, [])
+  const onCanvasClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    if (pointerDownPos.current) {
+      const dx = e.nativeEvent.clientX - pointerDownPos.current.x
+      const dy = e.nativeEvent.clientY - pointerDownPos.current.y
+      if (dx * dx + dy * dy > 25) return
+    }
+    setSelectedIds(new Set())
+  }, [])
 
   function matColor(id: string) {
     if (selectedIds.has(id)) return '#ff6b6b'
@@ -371,7 +377,7 @@ export default function TriangleInfill({ params, onSelectionChange, handleRef }:
   const partOv = (type: string) => parts.find(p => p.type === type)?.overrides ?? DEFAULT_OVERRIDES
 
   return (
-    <group ref={groupRef} onClick={onCanvasClick}>
+    <group ref={groupRef} onPointerDown={onCanvasPointerDown} onClick={onCanvasClick}>
       <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[20, 20]} />
         <meshBasicMaterial visible={false} />
