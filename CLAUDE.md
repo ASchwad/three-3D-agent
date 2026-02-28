@@ -201,7 +201,18 @@ const activeProject = projects.find(p => p.id === activeProjectId)
 
 **Key principle:** The app should feel like a portfolio of 3D models. Each reference image the user gives you becomes a new entry the user can switch to, inspect, and tweak independently.
 
-### 5. General Component Guidelines
+### 5. Geometry Iteration Discipline
+
+When building or modifying 3D geometry to match a reference image:
+
+- **Plan the 2D profile before coding.** Identify every geometric primitive (lines, arcs, circles) and their exact center points. Don't start coding until you know what shapes you're combining and where each arc center lives.
+- **Prefer one mesh over multiple.** Adding a separate mesh to fix a proportion issue (e.g. a LatheGeometry tube to add a barrel) introduces z-fighting, alignment, and visual seam problems. Fix the 2D profile of a single ExtrudeGeometry first. Only add a second mesh when mathematically necessary (different topology).
+- **Define arc centers explicitly.** Never rely on fillet/offset math to "end up" at the right center. If a circular feature must be centered at a specific point (e.g. a bore hole), construct the arc with that center directly using `lineCircleIntersect` + manual arc points.
+- **Stop tweaking multipliers after 2 failed attempts.** If adjusting a coefficient (`T * 0.35` → `T * 0.5` → `T * 0.8`) doesn't converge toward the reference, the underlying geometric approach is wrong. Step back and rethink the construction method.
+- **Use headless screenshots.** Use `scripts/capture-headless.cjs` (Playwright headless) instead of MCP browser tools. Capture after every geometry change, not after batching multiple changes.
+- **Vite HMR preserves React state.** Changing `defaultParams` in `projects.ts` won't take effect until a full page reload. The headless script should navigate fresh each time.
+
+### 6. General Component Guidelines
 
 - Keep all 3D components in `src/components/`.
 - Use `useMemo` for geometry creation that depends on parameters to avoid re-creating on every render.
