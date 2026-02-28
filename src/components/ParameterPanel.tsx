@@ -65,6 +65,26 @@ export default function ParameterPanel({
     return acc
   }, {})
 
+  const unitSelector = (
+    <div className="flex items-center justify-end">
+      <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
+        {(['mm', 'cm'] as const).map((u) => (
+          <button
+            key={u}
+            onClick={() => onUnitChange(u)}
+            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+              unit === u
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {u}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
   const parametersContent = (
     <>
       {Object.entries(groups).map(([group, defs], i) => (
@@ -181,24 +201,7 @@ export default function ParameterPanel({
               </TabsList>
             </div>
             <TabsContent value="parameters" className="space-y-5 mt-4">
-              {/* Unit selector inline with first group */}
-              <div className="flex items-center justify-end">
-                <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
-                  {(['mm', 'cm'] as const).map((u) => (
-                    <button
-                      key={u}
-                      onClick={() => onUnitChange(u)}
-                      className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-                        unit === u
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {u}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {unitSelector}
               {parametersContent}
             </TabsContent>
             <TabsContent value="reference" className="mt-4">
@@ -207,23 +210,7 @@ export default function ParameterPanel({
           </Tabs>
         ) : (
           <div className="space-y-5">
-            <div className="flex items-center justify-end">
-              <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
-                {(['mm', 'cm'] as const).map((u) => (
-                  <button
-                    key={u}
-                    onClick={() => onUnitChange(u)}
-                    className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-                      unit === u
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {u}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {unitSelector}
             {parametersContent}
           </div>
         )}
